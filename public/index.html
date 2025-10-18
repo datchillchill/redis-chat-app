@@ -13,7 +13,7 @@
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            height: 100vh;
+            min-height: 100vh;
             display: flex;
         }
 
@@ -416,6 +416,7 @@
             display: flex;
             gap: 12px;
             align-items: flex-start;
+            width: fit-content;
         }
 
         @keyframes slideIn {
@@ -444,18 +445,11 @@
         }
 
         #messages>li.received-message {
-            background: white;
-            color: #2c3e50;
-            border-left: 4px solid #e0e0e0;
             align-self: flex-start;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
         }
 
         #messages>li.sent-message {
-            background: linear-gradient(135deg, #1e90ff 0%, #003d7a 100%);
-            color: white;
             align-self: flex-end;
-            box-shadow: 0 2px 8px rgba(30, 144, 255, 0.4);
             flex-direction: row-reverse;
         }
 
@@ -495,10 +489,15 @@
         }
 
         #form {
-            background: white;
-            padding: 16px 20px;
+            background: #f0f0f0;
+            padding: 10px;
             display: flex;
-            gap: 10px;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            position: relative;
+            bottom: 0;
+            left: 0;
             border-top: 1px solid #e0e0e0;
             box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
         }
@@ -506,10 +505,11 @@
         #input {
             flex: 1;
             border: 1px solid #e0e0e0;
-            padding: 12px 16px;
-            border-radius: 24px;
+            padding: 10px 12px;
+            border-radius: 20px;
             font-size: 14px;
             transition: all 0.3s;
+            background-color: #fff;
             font-family: inherit;
         }
 
@@ -522,14 +522,14 @@
         #form>button {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             border: none;
-            padding: 12px 28px;
-            border-radius: 24px;
+            padding: 10px 16px;
+            border-radius: 20px;
             color: white;
             cursor: pointer;
             font-weight: 600;
             font-size: 14px;
             transition: all 0.3s;
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 2px 6px rgba(102, 126, 234, 0.4);
         }
 
         #form>button:hover {
@@ -556,6 +556,261 @@
             color: #95a5a6;
             font-size: 16px;
             text-align: center;
+        }
+
+        .message-actions {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            align-items: center;
+            opacity: 0;
+            transition: opacity 0.2s ease-in-out;
+        }
+
+        #messages>li:hover .message-actions {
+            opacity: 1;
+        }
+
+        #messages>li.sent-message .message-actions {
+            margin-left: 8px;
+        }
+
+        #messages>li.received-message .message-actions {
+            margin-right: 10px;
+            order: -1;
+        }
+
+        .action-btn {
+            background: rgba(0, 0, 0, 0.3);
+            border: none;
+            color: white;
+            cursor: pointer;
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+
+        #messages>li.received-message .action-btn {
+            background: #e4e6eb;
+            color: #050505;
+        }
+
+        .action-btn:hover {
+            background: rgba(0, 0, 0, 0.5);
+        }
+
+        #messages>li.received-message .action-btn:hover {
+            background: #d8dadf;
+        }
+
+        .more-actions-menu {
+            display: none;
+            position: absolute;
+            bottom: 40px;
+            right: 0;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            z-index: 10;
+            overflow: hidden;
+            width: 120px;
+        }
+
+        .more-actions-menu.active {
+            display: block;
+        }
+
+        .more-actions-menu button {
+            background: none;
+            border: none;
+            width: 100%;
+            padding: 10px 15px;
+            text-align: left;
+            cursor: pointer;
+            color: #050505;
+            font-size: 14px;
+        }
+
+        .more-actions-menu button:hover {
+            background-color: #f0f2f5;
+        }
+
+        .reaction-picker {
+            display: none;
+            position: absolute;
+            bottom: 40px;
+            right: 0;
+            background-color: white;
+            padding: 8px;
+            border-radius: 20px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            z-index: 10;
+            gap: 8px;
+        }
+
+        .reaction-picker.active {
+            display: flex;
+        }
+
+        .reaction-picker span {
+            font-size: 24px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .reaction-picker span:hover {
+            transform: scale(1.3);
+        }
+
+        .reactions-container {
+            position: absolute;
+            right: 4px;
+            bottom: -12px;
+            display: flex;
+            gap: 4px;
+            z-index: 2;
+        }
+
+        .reaction-item {
+            background-color: white;
+            border: 1px solid #f0f2f5;
+            border-radius: 10px;
+            padding: 2px 6px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        }
+
+        .reaction-item .count {
+            font-size: 11px;
+            color: #65676b;
+        }
+
+        .edit-container {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 5px;
+        }
+
+        .edit-textarea {
+            width: 100%;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            background-color: rgba(0, 0, 0, 0.2);
+            color: white;
+            font-family: inherit;
+            font-size: 14px;
+            resize: vertical;
+        }
+
+        .edit-textarea:focus {
+            outline: none;
+            border-color: white;
+            box-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+        }
+
+        .edit-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+
+        .edit-btn {
+            border: none;
+            padding: 6px 12px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        .edit-btn-save {
+            background-color: #2ecc71;
+            color: white;
+        }
+
+        .edit-btn-save:hover {
+            background-color: #27ae60;
+        }
+
+        .edit-btn-cancel {
+            background-color: transparent;
+            color: white;
+            opacity: 0.8;
+        }
+
+        .edit-btn-cancel:hover {
+            opacity: 1;
+            text-decoration: underline;
+        }
+
+        .message-text {
+            white-space: pre-wrap;
+        }
+
+        .edited-indicator {
+            font-size: 0.7em;
+            opacity: 0.7;
+            margin-left: 5px;
+        }
+
+        .edited-indicator {
+            font-size: 0.7em;
+            opacity: 0.7;
+            margin-left: 5px;
+        }
+
+        #messages>li.received-message .reaction-picker,
+        #messages>li.received-message .more-actions-menu {
+            right: auto;
+            left: 0;
+        }
+
+        .message-content {
+            padding: 8px 12px;
+            position: relative;
+        }
+
+        #messages>li.sent-message .message-content {
+            background: #0084ff;
+            color: white;
+            border-radius: 18px 18px 5px 18px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+        }
+
+        #messages>li.received-message .message-content {
+            background: #e4e6eb;
+            color: #050505;
+            border-radius: 18px 18px 18px 5px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+        }
+
+        #messages>li.received-message .message-actions {
+            order: 3;
+            margin-left: 8px;
+            margin-right: 0;
+        }
+
+        .unread-badge {
+            background-color: #e41e3f;
+            color: white;
+            border-radius: 50%;
+            padding: 1px 6px;
+            font-size: 11px;
+            font-weight: bold;
+            margin-left: auto;
+            line-height: 1.5;
         }
     </style>
 </head>
@@ -627,7 +882,7 @@
             </div>
 
             <ul id="messages">
-                <li class="system-message">👋 Chọn một phòng hoặc một người dùng để bắt đầu chat</li>
+                <li class="system-message">Chọn một phòng hoặc một người dùng để bắt đầu chat</li>
             </ul>
 
             <form id="form" style="display: none;">
@@ -644,7 +899,6 @@
                 style="color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer;">&times;</span>
             <h2 style="margin-bottom: 15px;">Thống Kê Hệ Thống Chat</h2>
             <ul id="stats-list" style="list-style-type: none; padding: 0;">
-                <!-- Dữ liệu sẽ được chèn vào đây bởi JavaScript -->
             </ul>
         </div>
     </div>
@@ -668,7 +922,6 @@
         const toggleLink = document.getElementById('toggleLink');
         const logoutBtn = document.getElementById('logoutBtn');
         const currentUsernameSpan = document.getElementById('currentUsername');
-
         const form = document.getElementById('form');
         const input = document.getElementById('input');
         const messages = document.getElementById('messages');
@@ -678,15 +931,90 @@
         const userListUl = document.getElementById('user-list');
         const userCountSpan = document.getElementById('user-count');
         const chatHeaderTitle = document.getElementById('chatHeaderTitle');
-
-        let currentActiveChat = { type: null, id: null, name: null };
-        let messageCounter = 0;
         const statsModal = document.getElementById('statsModal');
         const showStatsBtn = document.getElementById('showStatsBtn');
         const closeStatsModal = document.getElementById('closeStatsModal');
         const statsListUl = document.getElementById('stats-list');
 
-        // Kiểm tra token khi tải trang
+        let currentActiveChat = { type: null, id: null, receiverId: null, name: null };
+        let unreadCounts = {};
+        let currentRoomList = [];
+        let currentOnlineUsers = [];
+
+        function updateSidebarUI() {
+            // --- Vẽ lại danh sách phòng ---
+            const currentRoomId = currentActiveChat.type === 'room' ? currentActiveChat.id : null;
+            roomListDiv.innerHTML = '';
+            currentRoomList.forEach(room => {
+                const roomElement = document.createElement('div');
+                roomElement.className = 'room-item';
+                if (room === currentRoomId) {
+                    roomElement.classList.add('active');
+                }
+                const unreadCount = unreadCounts[room];
+                const badgeHtml = unreadCount ? `<span class="unread-badge">${unreadCount}</span>` : '';
+                roomElement.innerHTML = `<span>${room}</span> ${badgeHtml}`;
+                roomElement.setAttribute('data-room-id', room);
+                roomElement.addEventListener('click', () => joinRoom(room, room));
+                roomListDiv.appendChild(roomElement);
+            });
+
+            // --- Vẽ lại danh sách người dùng online ---
+            const activePrivateChatReceiverId = (currentActiveChat.type === 'private') ? currentActiveChat.receiverId : null;
+            userListUl.innerHTML = '';
+            const onlineUsersToDisplay = currentOnlineUsers.filter(user => user.userId !== currentUserId);
+            userCountSpan.textContent = onlineUsersToDisplay.length;
+            onlineUsersToDisplay.forEach(user => {
+                const userElement = document.createElement('li');
+                userElement.setAttribute('data-user-id', user.userId);
+
+                const chatParticipants = [currentUserId, user.userId].sort();
+                const privateChatId = `private:${chatParticipants[0]}:${chatParticipants[1]}`;
+                const unreadCount = unreadCounts[privateChatId];
+                const badgeHtml = unreadCount ? `<span class="unread-badge">${unreadCount}</span>` : '';
+
+                if (user.userId === activePrivateChatReceiverId) {
+                    userElement.classList.add('active');
+                }
+
+                userElement.innerHTML = `
+                <div class="status-dot"></div>
+                <img src="${user.avatar}" alt="${user.username}" class="avatar-small">
+                <span>${user.username}</span>
+                ${badgeHtml}
+            `;
+
+                userElement.addEventListener('click', () => startPrivateChat(user.userId, user.username, user.avatar));
+                userListUl.appendChild(userElement);
+            });
+        }
+
+        // --- CÁC HÀM LẮNG NGHE SỰ KIỆN TỪ SERVER ---
+        socket.on('room list', (rooms) => {
+            currentRoomList = rooms;
+            updateSidebarUI();
+        });
+
+        socket.on('online users list', (users) => {
+            currentOnlineUsers = users;
+            updateSidebarUI();
+        });
+
+        socket.on('all_unread_counts', (counts) => {
+            unreadCounts = counts || {};
+            updateSidebarUI();
+        });
+
+        socket.on('unread_update', ({ chatId, count }) => {
+            if (count > 0) {
+                unreadCounts[chatId] = count;
+            } else {
+                delete unreadCounts[chatId];
+            }
+            updateSidebarUI();
+        });
+
+        // --- XỬ LÝ KHI TẢI LẠI TRANG ---
         if (authToken && currentUsername && currentUserId) {
             authContainer.style.display = 'none';
             chatContainer.style.display = 'flex';
@@ -694,12 +1022,30 @@
             socket.emit('authenticate', { token: authToken });
         }
 
+        const storedChat = localStorage.getItem('currentActiveChat');
+        if (storedChat) {
+            currentActiveChat = JSON.parse(storedChat);
+        }
+
+        function restoreActiveChat() {
+            if (currentActiveChat.type === 'room' && currentActiveChat.id && currentActiveChat.name) {
+                joinRoom(currentActiveChat.id, currentActiveChat.name);
+            } else if (currentActiveChat.type === 'private' && currentActiveChat.receiverId && currentActiveChat.name) {
+                startPrivateChat(currentActiveChat.receiverId, currentActiveChat.name);
+            } else {
+                messages.innerHTML = '<li class="system-message">👋 Chọn một phòng hoặc một người dùng để bắt đầu chat</li>';
+                chatHeaderTitle.textContent = "Chào mừng";
+                chatHeaderTitle.className = 'room-header';
+                form.style.display = 'none';
+            }
+        }
+        restoreActiveChat();
+
+        // --- CÁC HÀM TIỆN ÍCH VÀ XỬ LÝ GIAO DIỆN ---
         function showAuthError(message) {
             authError.textContent = message;
             authError.style.display = 'block';
-            setTimeout(() => {
-                authError.style.display = 'none';
-            }, 5000);
+            setTimeout(() => { authError.style.display = 'none'; }, 5000);
         }
 
         function showError(message) {
@@ -708,21 +1054,11 @@
             errorDiv.textContent = message;
             messages.appendChild(errorDiv);
             messages.scrollTop = messages.scrollHeight;
-
-            setTimeout(() => {
-                errorDiv.remove();
-            }, 5000);
+            setTimeout(() => { errorDiv.remove(); }, 5000);
         }
 
-        toggleLink.addEventListener('click', () => {
-            currentMode = currentMode === 'login' ? 'register' : 'login';
-            updateAuthForm();
-        });
-
-        toggleBtn.addEventListener('click', () => {
-            currentMode = currentMode === 'login' ? 'register' : 'login';
-            updateAuthForm();
-        });
+        toggleLink.addEventListener('click', () => { currentMode = currentMode === 'login' ? 'register' : 'login'; updateAuthForm(); });
+        toggleBtn.addEventListener('click', () => { currentMode = currentMode === 'login' ? 'register' : 'login'; updateAuthForm(); });
 
         function updateAuthForm() {
             if (currentMode === 'register') {
@@ -746,12 +1082,10 @@
             e.preventDefault();
             const username = authUsername.value.trim();
             const password = authPassword.value.trim();
-
             if (!username || !password) {
                 showAuthError('Vui lòng nhập tên người dùng và mật khẩu');
                 return;
             }
-
             if (currentMode === 'login') {
                 socket.emit('login', { username, password });
             } else {
@@ -760,9 +1094,7 @@
         });
 
         logoutBtn.addEventListener('click', () => {
-            localStorage.removeItem('chatToken');
-            localStorage.removeItem('chatUsername');
-            localStorage.removeItem('chatUserId');
+            localStorage.clear();
             location.reload();
         });
 
@@ -773,11 +1105,9 @@
             currentUsername = data.username;
             currentUserId = data.userId;
             authToken = data.token;
-
             authContainer.style.display = 'none';
             chatContainer.style.display = 'flex';
             currentUsernameSpan.textContent = data.username;
-
             socket.emit('authenticate', { token: data.token });
         });
 
@@ -798,105 +1128,225 @@
             }
         });
 
-        socket.on('room list', (rooms) => {
-            roomListDiv.innerHTML = '';
-            rooms.forEach(room => {
-                const roomElement = document.createElement('div');
-                roomElement.className = 'room-item';
-                roomElement.setAttribute('data-room-id', room);
-                roomElement.textContent = room;
-                roomElement.addEventListener('click', () => joinRoom(room, room));
-                roomListDiv.appendChild(roomElement);
-            });
-        });
-
-        socket.on('online users list', (users) => {
-            userListUl.innerHTML = '';
-            userCountSpan.textContent = users.length;
-            users.forEach(user => {
-                if (user.userId !== currentUserId) {
-                    const userElement = document.createElement('li');
-                    userElement.setAttribute('data-user-id', user.userId);
-                    userElement.innerHTML = `
-                        <div class="status-dot"></div>
-                        <img src="${user.avatar}" alt="${user.username}" class="avatar-small">
-                        <span>${user.username}</span>
-                    `;
-                    userElement.addEventListener('click', () => startPrivateChat(user.userId, user.username, user.avatar));
-                    userListUl.appendChild(userElement);
-                }
-            });
-        });
-
         socket.on('history', (history) => {
             messages.innerHTML = '';
-            history.forEach(msg => appendMessage(msg, false));
+            history.forEach(msg => appendMessage(msg));
         });
 
         socket.on('chat message', (msg) => {
-            if (currentActiveChat.type === 'room') {
-                appendMessage(msg, false);
+            // Kiểm tra xem tin nhắn có phải của phòng chat hiện tại không
+            const isForCurrentRoom = (currentActiveChat.type === 'room' && currentActiveChat.id === msg.roomId); 
+
+            if (isForCurrentRoom) {
+                appendMessage(msg);
+                
+                // Gửi tín hiệu đã đọc cho phòng chat này
+                socket.emit('mark_as_read', { chatId: currentActiveChat.id });
             }
         });
 
-        socket.on('private chat history', ({ targetUserId, history }) => {
+        socket.on('private chat history', ({ history }) => {
             messages.innerHTML = '';
-            history.forEach(msg => appendMessage(msg, true));
+            history.forEach(msg => appendMessage(msg));
         });
 
         socket.on('private message', (msg) => {
-            if (currentActiveChat.type === 'private' &&
-                (currentActiveChat.id === msg.senderId || currentActiveChat.id === msg.receiverId)) {
-                appendMessage(msg, true);
-            } else if (currentActiveChat.type === 'private') {
-                // Nếu đang chat với người khác, hiển thị thông báo
-                showError(`Tin nhắn mới từ ${msg.senderUsername}`);
-            }
-        });
+            const isForCurrentChat =
+                (msg.senderId === currentUserId && msg.receiverId === currentActiveChat.receiverId) ||
+                (msg.senderId === currentActiveChat.receiverId && msg.receiverId === currentUserId);
 
-        socket.on('room online users', (users) => {
-            // Cập nhật danh sách người dùng online trong phòng nếu cần
-        });
-
-        const formatTime = (timestamp) => {
-            return new Date(timestamp).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-        };
-
-        const appendMessage = (msg, isPrivate = false) => {
-            const item = document.createElement('li');
-
-            let messageSender = '';
-            let messageAvatar = '';
-            let isSentMessage = false;
-
-            if (isPrivate) {
-                messageSender = msg.senderUsername;
-                messageAvatar = msg.avatar;
-                isSentMessage = (msg.senderId === currentUserId);
+            if (currentActiveChat.type === 'private' && isForCurrentChat) {
+                appendMessage(msg);
+                socket.emit('mark_as_read', { chatId: currentActiveChat.id });
             } else {
-                messageSender = msg.user;
-                messageAvatar = msg.avatar;
-                isSentMessage = (msg.userId === currentUserId);
+                // Cập nhật số tin nhắn chưa đọc cho cuộc trò chuyện riêng tư
+                const chatParticipants = [currentUserId, msg.senderId].sort();
+                const privateChatId = `private:${chatParticipants[0]}:${chatParticipants[1]}`;
+                if (!unreadCounts[privateChatId]) unreadCounts[privateChatId] = 0;
+                unreadCounts[privateChatId]++;
+                updateSidebarUI();
             }
+        });
+
+        const formatTime = (timestamp) => new Date(timestamp).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+
+        const appendMessage = (msg) => {
+            const existingItem = document.querySelector(`li[data-message-id="${msg.messageId}"]`);
+            const item = existingItem || document.createElement('li');
+            if (!existingItem) {
+                item.setAttribute('data-message-id', msg.messageId);
+            }
+
+            let messageSender = msg.user || msg.senderUsername;
+            let messageAvatar = msg.avatar;
+            let isSentMessage = (msg.userId === currentUserId) || (msg.senderId === currentUserId);
 
             if (msg.isSystem) {
                 item.className = 'system-message';
                 item.innerHTML = msg.text;
             } else {
-                const avatarImg = messageAvatar ? `<img src="${messageAvatar}" alt="${messageSender}" class="message-avatar">` : '<div class="message-avatar"></div>';
-                item.innerHTML = `${avatarImg}<div class="message-content"><span class="user">${messageSender}</span>${msg.text}<span class="timestamp">${formatTime(msg.timestamp)}</span></div>`;
-
-                if (isSentMessage) {
-                    item.classList.add('sent-message');
-                } else {
-                    item.classList.add('received-message');
+                let reactionsHtml = '';
+                if (msg.reactions && Object.keys(msg.reactions).length > 0) {
+                    reactionsHtml = '<div class="reactions-container">';
+                    for (const emoji in msg.reactions) {
+                        const count = msg.reactions[emoji].length;
+                        if (count > 0) {
+                            reactionsHtml += `<div class="reaction-item"><span>${emoji}</span><span class="count">${count}</span></div>`;
+                        }
+                    }
+                    reactionsHtml += '</div>';
                 }
+
+                const avatarImg = messageAvatar ? `<img src="${messageAvatar}" alt="${messageSender}" class="message-avatar">` : '';
+                const editedIndicator = msg.edited ? '<span class="edited-indicator">(đã sửa)</span>' : '';
+                const actionsHtml = `
+                <div class="message-actions">
+                    <div style="position: relative;">
+                        <button class="action-btn react-btn" onclick="showReactionPicker(event, '${msg.messageId}')">😊</button>
+                        <div id="reaction-picker-${msg.messageId}" class="reaction-picker">
+                            <span onclick="addReaction('${msg.messageId}', '👍')">👍</span>
+                            <span onclick="addReaction('${msg.messageId}', '❤️')">❤️</span>
+                            <span onclick="addReaction('${msg.messageId}', '😂')">😂</span>
+                            <span onclick="addReaction('${msg.messageId}', '😮')">😮</span>
+                            <span onclick="addReaction('${msg.messageId}', '😢')">😢</span>
+                            <span onclick="addReaction('${msg.messageId}', '😡')">😡</span>
+                        </div>
+                    </div>
+                    ${isSentMessage ? `
+                        <div style="position: relative;">
+                            <button class="action-btn more-btn" onclick="toggleMoreMenu(event, '${msg.messageId}')">⋯</button>
+                            <div id="more-menu-${msg.messageId}" class="more-actions-menu">
+                                <button onclick="showEditInput('${msg.messageId}')">✏️ Sửa</button>
+                                <button onclick="deleteMessage('${msg.messageId}')">🗑️ Xóa</button>
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+
+                item.innerHTML = `
+                ${avatarImg}
+                <div class="bubble-container">
+                    <div class="message-content">
+                        <span class="user">${messageSender}</span>
+                        <div class="message-text">${msg.text}</div>
+                        <span class="timestamp">${formatTime(msg.timestamp)}${editedIndicator}</span>
+                        
+                        <!-- SỬA LỖI: Đưa reactions vào TRONG message-content -->
+                        ${reactionsHtml} 
+                    </div>
+                </div>
+                ${actionsHtml}
+            `;
+
+                item.className = '';
+                item.classList.add(isSentMessage ? 'sent-message' : 'received-message');
             }
 
-            messages.appendChild(item);
-            messageCounter++;
-            messages.scrollTop = messages.scrollHeight;
+            if (!existingItem) {
+                messages.appendChild(item);
+                messages.scrollTop = messages.scrollHeight;
+            }
         };
+
+        function toggleMoreMenu(event, messageId) {
+            event.stopPropagation();
+            const menu = document.getElementById(`more-menu-${messageId}`);
+            document.querySelectorAll('.more-actions-menu, .reaction-picker').forEach(m => {
+                if (m.id !== menu.id) m.classList.remove('active');
+            });
+            menu.classList.toggle('active');
+        }
+
+        function showReactionPicker(event, messageId) {
+            event.stopPropagation();
+            const picker = document.getElementById(`reaction-picker-${messageId}`);
+            document.querySelectorAll('.more-actions-menu, .reaction-picker').forEach(m => {
+                if (m.id !== picker.id) m.classList.remove('active');
+            });
+            picker.classList.toggle('active');
+        }
+
+        function addReaction(messageId, emoji) {
+            socket.emit('react to message', { messageId, emoji, chatId: currentActiveChat.id });
+            document.querySelectorAll('.reaction-picker').forEach(m => m.classList.remove('active'));
+        }
+
+        window.addEventListener('click', () => {
+            document.querySelectorAll('.more-actions-menu, .reaction-picker').forEach(m => m.classList.remove('active'));
+        });
+
+        socket.on('message reacted', (updatedMessage) => {
+            appendMessage(updatedMessage);
+        });
+
+        function showEditInput(messageId) {
+            const messageElement = document.querySelector(`li[data-message-id="${messageId}"]`);
+            if (!messageElement) return;
+            const messageTextDiv = messageElement.querySelector('.message-text');
+            if (!messageTextDiv) return;
+            const currentText = messageTextDiv.innerText;
+            messageTextDiv.innerHTML = `
+            <div class="edit-container">
+                <textarea class="edit-textarea" rows="3">${currentText}</textarea>
+                <div class="edit-actions">
+                    <button class="edit-btn edit-btn-cancel" onclick="cancelEdit('${messageId}', \`${currentText.replace(/`/g, "\\`")}\`)">Hủy</button>
+                    <button class="edit-btn edit-btn-save" onclick="submitEdit('${messageId}')">Lưu</button>
+                </div>
+            </div>
+        `;
+            messageTextDiv.querySelector('.edit-textarea').focus();
+            document.querySelectorAll('.more-actions-menu').forEach(m => m.classList.remove('active'));
+        }
+
+        function cancelEdit(messageId, originalText) {
+            const messageElement = document.querySelector(`li[data-message-id="${messageId}"]`);
+            if (!messageElement) return;
+            const messageTextDiv = messageElement.querySelector('.message-text');
+            messageTextDiv.innerHTML = originalText;
+        }
+
+        function submitEdit(messageId) {
+            const messageElement = document.querySelector(`li[data-message-id="${messageId}"]`);
+            if (!messageElement) return;
+            const editTextarea = messageElement.querySelector('.edit-textarea');
+            if (!editTextarea) return;
+            const newText = editTextarea.value.trim();
+            if (newText) {
+                socket.emit('edit message', { messageId, newText, chatId: currentActiveChat.id });
+            }
+        }
+
+        function deleteMessage(messageId) {
+            if (confirm('Bạn có chắc muốn xóa tin nhắn này không?')) {
+                socket.emit('delete message', { messageId, chatId: currentActiveChat.id });
+            }
+            document.querySelectorAll('.more-actions-menu').forEach(m => m.classList.remove('active'));
+        }
+
+        socket.on('message edited', (updatedMessage) => {
+            const messageElement = document.querySelector(`li[data-message-id="${updatedMessage.messageId}"]`);
+            if (messageElement) {
+                const messageTextDiv = messageElement.querySelector('.message-text');
+                const timestampSpan = messageElement.querySelector('.timestamp');
+                if (messageTextDiv) {
+                    messageTextDiv.innerHTML = updatedMessage.text;
+                }
+                if (timestampSpan) {
+                    const editedIndicator = '<span class="edited-indicator">(đã sửa)</span>';
+                    if (!timestampSpan.innerHTML.includes(editedIndicator)) {
+                        timestampSpan.innerHTML += editedIndicator;
+                    }
+                }
+            }
+        });
+
+        socket.on('message deleted', ({ messageId }) => {
+            const messageElement = document.querySelector(`li[data-message-id="${messageId}"]`);
+            if (messageElement) {
+                messageElement.remove();
+            }
+        });
 
         form.addEventListener('submit', (e) => {
             e.preventDefault();
@@ -905,7 +1355,7 @@
                 if (currentActiveChat.type === 'room') {
                     socket.emit('chat message', { text: messageText });
                 } else if (currentActiveChat.type === 'private') {
-                    socket.emit('send private message', { receiverUserId: currentActiveChat.id, text: messageText });
+                    socket.emit('send private message', { receiverUserId: currentActiveChat.receiverId, text: messageText });
                 }
                 input.value = '';
                 input.focus();
@@ -914,22 +1364,15 @@
 
         function joinRoom(roomId, roomName) {
             if (currentActiveChat.type === 'room' && currentActiveChat.id === roomId) return;
-
-            // Xóa trạng thái active
-            document.querySelectorAll('.room-item').forEach(el => el.classList.remove('active'));
-            document.querySelectorAll('#user-list li').forEach(el => el.classList.remove('active'));
-
-            // Đặt trạng thái active mới
+            document.querySelectorAll('.room-item, #user-list li').forEach(el => el.classList.remove('active'));
             const newRoomElement = document.querySelector(`.room-item[data-room-id="${roomId}"]`);
-            if (newRoomElement) {
-                newRoomElement.classList.add('active');
-            }
+            if (newRoomElement) newRoomElement.classList.add('active');
 
             currentActiveChat = { type: 'room', id: roomId, name: roomName };
             socket.emit('join room', { roomId });
 
             messages.innerHTML = '';
-            messageCounter = 0;
+            localStorage.setItem('currentActiveChat', JSON.stringify(currentActiveChat));
             chatHeaderTitle.textContent = roomName;
             chatHeaderTitle.className = 'room-header';
             form.style.display = 'flex';
@@ -937,27 +1380,20 @@
         }
 
         function startPrivateChat(userId, username, avatar) {
-            if (userId === currentUserId) {
-                showError('Bạn không thể tự nhắn tin cho chính mình.');
-                return;
-            }
-            if (currentActiveChat.type === 'private' && currentActiveChat.id === userId) return;
+            if (userId === currentUserId) return;
+            const chatParticipants = [currentUserId, userId].sort();
+            const privateChatId = `private:${chatParticipants[0]}:${chatParticipants[1]}`;
+            if (currentActiveChat.type === 'private' && currentActiveChat.id === privateChatId) return;
 
-            // Xóa trạng thái active
-            document.querySelectorAll('.room-item').forEach(el => el.classList.remove('active'));
-            document.querySelectorAll('#user-list li').forEach(el => el.classList.remove('active'));
-
-            // Đặt trạng thái active mới
+            document.querySelectorAll('.room-item, #user-list li').forEach(el => el.classList.remove('active'));
             const newUserElement = document.querySelector(`#user-list li[data-user-id="${userId}"]`);
-            if (newUserElement) {
-                newUserElement.classList.add('active');
-            }
+            if (newUserElement) newUserElement.classList.add('active');
 
-            currentActiveChat = { type: 'private', id: userId, name: username };
+            currentActiveChat = { type: 'private', id: privateChatId, receiverId: userId, name: username };
             socket.emit('get private history', { targetUserId: userId });
 
             messages.innerHTML = '';
-            messageCounter = 0;
+            localStorage.setItem('currentActiveChat', JSON.stringify(currentActiveChat));
             chatHeaderTitle.textContent = username;
             chatHeaderTitle.className = 'private-header';
             form.style.display = 'flex';
@@ -976,11 +1412,7 @@
 
         newRoomNameInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
-                const roomName = newRoomNameInput.value.trim();
-                if (roomName) {
-                    socket.emit('create room', { roomName });
-                    newRoomNameInput.value = '';
-                }
+                createRoomBtn.click();
             }
         });
 
@@ -988,86 +1420,28 @@
             showError(`Phòng "${roomName}" đã được tạo thành công`);
         });
 
-        socket.on('room list', (rooms) => {
-            roomListDiv.innerHTML = '';
-            rooms.forEach(room => {
-                const roomElement = document.createElement('div');
-                roomElement.className = 'room-item';
-                roomElement.setAttribute('data-room-id', room);
-                roomElement.textContent = room;
-                roomElement.addEventListener('click', () => joinRoom(room, room));
-                roomListDiv.appendChild(roomElement);
-            });
-        });
-
-        // Lắng nghe cập nhật danh sách phòng từ Redis Pub/Sub
-        socket.on('room list', (rooms) => {
-            const currentRoomId = currentActiveChat.type === 'room' ? currentActiveChat.id : null;
-            roomListDiv.innerHTML = '';
-            rooms.forEach(room => {
-                const roomElement = document.createElement('div');
-                roomElement.className = 'room-item';
-                if (room === currentRoomId) {
-                    roomElement.classList.add('active');
-                }
-                roomElement.setAttribute('data-room-id', room);
-                roomElement.textContent = room;
-                roomElement.addEventListener('click', () => joinRoom(room, room));
-                roomListDiv.appendChild(roomElement);
-            });
-        });
-
-        // Lắng nghe cập nhật danh sách người dùng online
-        socket.on('online users list', (users) => {
-            const currentUserId_private = currentActiveChat.type === 'private' ? currentActiveChat.id : null;
-            userListUl.innerHTML = '';
-            userCountSpan.textContent = users.length;
-            users.forEach(user => {
-                if (user.userId !== currentUserId) {
-                    const userElement = document.createElement('li');
-                    userElement.setAttribute('data-user-id', user.userId);
-                    if (user.userId === currentUserId_private) {
-                        userElement.classList.add('active');
-                    }
-                    userElement.innerHTML = `
-                        <div class="status-dot"></div>
-                        <img src="${user.avatar}" alt="${user.username}" class="avatar-small">
-                        <span>${user.username}</span>
-                    `;
-                    userElement.addEventListener('click', () => startPrivateChat(user.userId, user.username, user.avatar));
-                    userListUl.appendChild(userElement);
-                }
-            });
-        });
-
-        // Mở modal khi bấm nút
         showStatsBtn.addEventListener('click', () => {
-            socket.emit('get stats'); // Gửi yêu cầu lấy thống kê lên server
+            socket.emit('get stats');
         });
 
-        // Đóng modal khi bấm dấu 'x'
         closeStatsModal.addEventListener('click', () => {
             statsModal.style.display = 'none';
         });
 
-        // Đóng modal khi bấm ra ngoài vùng nội dung
         window.addEventListener('click', (event) => {
             if (event.target == statsModal) {
                 statsModal.style.display = 'none';
             }
         });
 
-        // Lắng nghe sự kiện 'stats' từ server và cập nhật modal
         socket.on('stats', (stats) => {
             if (stats) {
-                // Cập nhật nội dung cho modal
                 statsListUl.innerHTML = `
-            <li style="padding: 8px 0; border-bottom: 1px solid #eee;">Tổng số tin nhắn đã gửi: <strong>${stats.totalMessages}</strong></li>
-            <li style="padding: 8px 0; border-bottom: 1px solid #eee;">Tổng số người dùng đã đăng ký: <strong>${stats.totalRegisteredUsers}</strong></li>
-            <li style="padding: 8px 0; border-bottom: 1px solid #eee;">Số phòng đang hoạt động: <strong>${stats.activeRoomsCount}</strong></li>
-            <li style="padding: 8px 0;">Danh sách phòng: <strong>${stats.activeRoomsList.join(', ')}</strong></li>
-        `;
-                // Hiển thị modal
+                <li style="padding: 8px 0; border-bottom: 1px solid #eee;">Tổng số tin nhắn đã gửi: <strong>${stats.totalMessages}</strong></li>
+                <li style="padding: 8px 0; border-bottom: 1px solid #eee;">Tổng số người dùng đã đăng ký: <strong>${stats.totalRegisteredUsers}</strong></li>
+                <li style="padding: 8px 0; border-bottom: 1px solid #eee;">Số phòng đang hoạt động: <strong>${stats.activeRoomsCount}</strong></li>
+                <li style="padding: 8px 0;">Danh sách phòng: <strong>${stats.activeRoomsList.join(', ')}</strong></li>
+            `;
                 statsModal.style.display = 'block';
             } else {
                 showError('Không thể tải thống kê.');
