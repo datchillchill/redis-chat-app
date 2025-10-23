@@ -357,12 +357,14 @@
 
         .chat-header {
             background: white;
-            padding: 20px;
+            padding: 10px;
             border-bottom: 1px solid #e0e0e0;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
             display: flex;
             align-items: center;
             justify-content: space-between;
+            position: relative;
+            z-index: 10;
         }
 
         .chat-header h2 {
@@ -390,7 +392,7 @@
 
         #messages {
             list-style: none;
-            padding: 20px;
+            padding: 70px;
             flex: 1;
             overflow-y: auto;
             display: flex;
@@ -617,7 +619,7 @@
             background-color: white;
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-            z-index: 10;
+            z-index: 100;
             overflow: hidden;
             width: 120px;
         }
@@ -650,7 +652,7 @@
             padding: 8px;
             border-radius: 20px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-            z-index: 10;
+            z-index: 100;
             gap: 8px;
         }
 
@@ -802,6 +804,15 @@
             margin-right: 0;
         }
 
+        .typing-indicator {
+            padding: 0 20px 5px 20px;
+            height: 20px;
+            font-style: italic;
+            color: #65676b;
+            font-size: 13px;
+            transition: opacity 0.3s;
+        }
+
         .unread-badge {
             background-color: #e41e3f;
             color: white;
@@ -811,6 +822,77 @@
             font-weight: bold;
             margin-left: auto;
             line-height: 1.5;
+        }
+
+        .search-container {
+            display: none;
+            padding: 8px 15px;
+            background-color: #f0f2f5;
+            border-bottom: 1px solid #e0e0e0;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .search-container.active {
+            display: flex;
+        }
+
+        #searchInput {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 18px;
+            outline: none;
+        }
+
+        .search-nav {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 14px;
+            color: #65676b;
+        }
+
+        .search-nav button {
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-size: 18px;
+            padding: 2px 5px;
+            border-radius: 4px;
+        }
+
+        .search-nav button:hover:not(:disabled) {
+            background-color: #e4e6eb;
+        }
+
+        .search-nav button:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .highlight {
+            background-color: #f7dd70;
+            border-radius: 2px;
+            padding: 0 2px;
+        }
+
+        .pinned-message-bar {
+            padding: 10px 20px;
+            background-color: #f0f2f5;
+            border-bottom: 1px solid #e0e0e0;
+            font-size: 13px;
+            color: #65676b;
+            display: none;
+            cursor: pointer;
+        }
+
+        .pinned-message-bar.active {
+            display: block;
+        }
+
+        .pinned-message-bar strong {
+            color: #050505;
         }
     </style>
 </head>
@@ -879,11 +961,29 @@
         <div id="main-content">
             <div class="chat-header">
                 <h2 id="chatHeaderTitle" class="room-header">Chào mừng</h2>
+                <button id="searchBtn"
+                    style="background:none; border:none; cursor:pointer; font-size: 20px; padding: 5px; border-radius: 50%;">🔍</button>
+            </div>
+
+            <div id="pinnedMessageBar" class="pinned-message-bar">
+            </div>
+
+            <div id="searchContainer" class="search-container">
+                <input type="text" id="searchInput" placeholder="Tìm kiếm tin nhắn...">
+                <div class="search-nav">
+                    <span id="searchCount">0/0</span>
+                    <button id="prevResultBtn" disabled title="Kết quả trước">🔼</button>
+                    <button id="nextResultBtn" disabled title="Kết quả tiếp theo">🔽</button>
+                </div>
+                <button id="closeSearchBtn"
+                    style="background:none; border:none; cursor:pointer; font-size: 18px; color: #65676b;">✕</button>
             </div>
 
             <ul id="messages">
                 <li class="system-message">Chọn một phòng hoặc một người dùng để bắt đầu chat</li>
             </ul>
+
+            <div id="typingIndicator" class="typing-indicator"></div>
 
             <form id="form" style="display: none;">
                 <input id="input" autocomplete="off" placeholder="Nhập tin nhắn..." />
@@ -935,14 +1035,27 @@
         const showStatsBtn = document.getElementById('showStatsBtn');
         const closeStatsModal = document.getElementById('closeStatsModal');
         const statsListUl = document.getElementById('stats-list');
+        const searchBtn = document.getElementById('searchBtn');
+        const searchContainer = document.getElementById('searchContainer');
+        const searchInput = document.getElementById('searchInput');
+        const searchCount = document.getElementById('searchCount');
+        const prevResultBtn = document.getElementById('prevResultBtn');
+        const nextResultBtn = document.getElementById('nextResultBtn');
+        const closeSearchBtn = document.getElementById('closeSearchBtn');
+        const typingIndicator = document.getElementById('typingIndicator');
+        const pinnedMessageBar = document.getElementById('pinnedMessageBar');
 
+        let typingTimeout;
+        let typingUsers = {};
+        let fullHistory = [];
+        let searchResults = [];
+        let currentResultIndex = -1;
         let currentActiveChat = { type: null, id: null, receiverId: null, name: null };
         let unreadCounts = {};
         let currentRoomList = [];
         let currentOnlineUsers = [];
 
         function updateSidebarUI() {
-            // --- Vẽ lại danh sách phòng ---
             const currentRoomId = currentActiveChat.type === 'room' ? currentActiveChat.id : null;
             roomListDiv.innerHTML = '';
             currentRoomList.forEach(room => {
@@ -1130,23 +1243,27 @@
 
         socket.on('history', (history) => {
             messages.innerHTML = '';
+            typingIndicator.textContent = '';
+            typingUsers = {};
+
             history.forEach(msg => appendMessage(msg));
         });
 
         socket.on('chat message', (msg) => {
-            // Kiểm tra xem tin nhắn có phải của phòng chat hiện tại không
-            const isForCurrentRoom = (currentActiveChat.type === 'room' && currentActiveChat.id === msg.roomId); 
+            const isForCurrentRoom = (currentActiveChat.type === 'room' && currentActiveChat.id === msg.roomId);
 
             if (isForCurrentRoom) {
                 appendMessage(msg);
-                
-                // Gửi tín hiệu đã đọc cho phòng chat này
+
                 socket.emit('mark_as_read', { chatId: currentActiveChat.id });
             }
         });
 
         socket.on('private chat history', ({ history }) => {
             messages.innerHTML = '';
+            typingIndicator.textContent = '';
+            typingUsers = {};
+
             history.forEach(msg => appendMessage(msg));
         });
 
@@ -1159,7 +1276,6 @@
                 appendMessage(msg);
                 socket.emit('mark_as_read', { chatId: currentActiveChat.id });
             } else {
-                // Cập nhật số tin nhắn chưa đọc cho cuộc trò chuyện riêng tư
                 const chatParticipants = [currentUserId, msg.senderId].sort();
                 const privateChatId = `private:${chatParticipants[0]}:${chatParticipants[1]}`;
                 if (!unreadCounts[privateChatId]) unreadCounts[privateChatId] = 0;
@@ -1167,6 +1283,33 @@
                 updateSidebarUI();
             }
         });
+
+        socket.on('user_typing', ({ username, chatId }) => {
+            if (chatId === currentActiveChat.id) {
+                typingUsers[username] = true;
+                updateTypingIndicator();
+            }
+        });
+
+        socket.on('user_stopped_typing', ({ username, chatId }) => {
+            if (chatId === currentActiveChat.id) {
+                delete typingUsers[username];
+                updateTypingIndicator();
+            }
+        });
+
+        function updateTypingIndicator() {
+            const users = Object.keys(typingUsers);
+            if (users.length === 0) {
+                typingIndicator.textContent = '';
+            } else if (users.length === 1) {
+                typingIndicator.textContent = `${users[0]} đang gõ...`;
+            } else if (users.length === 2) {
+                typingIndicator.textContent = `${users[0]} và ${users[1]} đang gõ...`;
+            } else {
+                typingIndicator.textContent = `Nhiều người đang gõ...`;
+            }
+        }
 
         const formatTime = (timestamp) => new Date(timestamp).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
 
@@ -1218,6 +1361,7 @@
                             <div id="more-menu-${msg.messageId}" class="more-actions-menu">
                                 <button onclick="showEditInput('${msg.messageId}')">✏️ Sửa</button>
                                 <button onclick="deleteMessage('${msg.messageId}')">🗑️ Xóa</button>
+                                <button onclick="pinMessage('${msg.messageId}')">📌 Ghim</button>
                             </div>
                         </div>
                     ` : ''}
@@ -1362,6 +1506,16 @@
             }
         });
 
+        input.addEventListener('input', () => {
+            socket.emit('start_typing', { chatId: currentActiveChat.id });
+
+            clearTimeout(typingTimeout);
+
+            typingTimeout = setTimeout(() => {
+                socket.emit('stop_typing', { chatId: currentActiveChat.id });
+            }, 2000);
+        });
+
         function joinRoom(roomId, roomName) {
             if (currentActiveChat.type === 'room' && currentActiveChat.id === roomId) return;
             document.querySelectorAll('.room-item, #user-list li').forEach(el => el.classList.remove('active'));
@@ -1372,6 +1526,8 @@
             socket.emit('join room', { roomId });
 
             messages.innerHTML = '';
+            typingIndicator.textContent = '';
+            typingUsers = {};
             localStorage.setItem('currentActiveChat', JSON.stringify(currentActiveChat));
             chatHeaderTitle.textContent = roomName;
             chatHeaderTitle.className = 'room-header';
@@ -1393,6 +1549,8 @@
             socket.emit('get private history', { targetUserId: userId });
 
             messages.innerHTML = '';
+            typingIndicator.textContent = '';
+            typingUsers = {};
             localStorage.setItem('currentActiveChat', JSON.stringify(currentActiveChat));
             chatHeaderTitle.textContent = username;
             chatHeaderTitle.className = 'private-header';
@@ -1447,4 +1605,154 @@
                 showError('Không thể tải thống kê.');
             }
         });
+
+        searchBtn.addEventListener('click', () => {
+            if (!currentActiveChat.id) return;
+
+            searchContainer.classList.add('active');
+            searchInput.focus();
+
+            socket.emit('get full history', { chatId: currentActiveChat.id }, (history) => {
+                fullHistory = history;
+                console.log(`Đã tải ${fullHistory.length} tin nhắn để sẵn sàng tìm kiếm.`);
+            });
+        });
+
+        closeSearchBtn.addEventListener('click', () => {
+            searchContainer.classList.remove('active');
+            clearHighlights();
+            searchInput.value = '';
+            fullHistory = [];
+            searchResults = [];
+        });
+
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const searchTerm = searchInput.value.trim().toLowerCase();
+                if (!searchTerm) return;
+
+                clearHighlights();
+                searchResults = [];
+
+                for (let i = fullHistory.length - 1; i >= 0; i--) {
+                    if (fullHistory[i].text.toLowerCase().includes(searchTerm)) {
+                        searchResults.push(fullHistory[i].messageId);
+                    }
+                }
+
+                if (searchResults.length > 0) {
+                    currentResultIndex = 0;
+                    updateSearchUI();
+                } else {
+                    searchCount.textContent = '0/0';
+                    prevResultBtn.disabled = true;
+                    nextResultBtn.disabled = true;
+                }
+            }
+        });
+
+        nextResultBtn.addEventListener('click', () => {
+            if (currentResultIndex < searchResults.length - 1) {
+                currentResultIndex++;
+                updateSearchUI();
+            }
+        });
+
+        prevResultBtn.addEventListener('click', () => {
+            if (currentResultIndex > 0) {
+                currentResultIndex--;
+                updateSearchUI();
+            }
+        });
+
+        function updateSearchUI() {
+            searchCount.textContent = `${currentResultIndex + 1}/${searchResults.length}`;
+            prevResultBtn.disabled = currentResultIndex === 0;
+            nextResultBtn.disabled = currentResultIndex === searchResults.length - 1;
+
+            highlightMessage(searchResults[currentResultIndex]);
+        }
+
+        function highlightMessage(messageId) {
+            clearHighlights();
+
+            let messageElement = document.querySelector(`li[data-message-id="${messageId}"]`);
+
+            if (messageElement) {
+                messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+                const textElement = messageElement.querySelector('.message-text');
+                const searchTerm = searchInput.value;
+                const regex = new RegExp(`(${escapeRegExp(searchTerm)})`, 'gi');
+                textElement.innerHTML = textElement.innerText.replace(regex, `<span class="highlight">$1</span>`);
+            } else {
+                alert("Tin nhắn này quá cũ và chưa được hiển thị trên màn hình.");
+            }
+        }
+
+        function clearHighlights() {
+            document.querySelectorAll('.highlight').forEach(el => {
+                const parent = el.parentNode;
+                if (parent) {
+                    parent.innerHTML = parent.innerText;
+                }
+            });
+        }
+
+        function escapeRegExp(string) {
+            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+
+        function pinMessage(messageId) {
+            socket.emit('pin_message', { messageId, chatId: currentActiveChat.id });
+            document.querySelectorAll('.more-actions-menu').forEach(m => m.classList.remove('active'));
+        }
+
+        socket.on('message_pinned', ({ chatId, pinnedMessage }) => {
+            if (chatId !== currentActiveChat.id) return;
+
+            if (pinnedMessage) {
+                pinnedMessageBar.innerHTML = `
+            <strong>📌 Tin nhắn đã ghim:</strong> 
+            <span>${pinnedMessage.user || pinnedMessage.senderUsername}: ${pinnedMessage.text}</span>
+        `;
+                pinnedMessageBar.classList.add('active');
+                pinnedMessageBar.onclick = () => {
+                    const targetMessage = document.querySelector(`li[data-message-id="${pinnedMessage.messageId}"]`);
+                    if (targetMessage) {
+                        targetMessage.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        targetMessage.style.transition = 'background-color 0.5s';
+                        targetMessage.style.backgroundColor = 'rgba(255, 229, 100, 0.5)';
+                        setTimeout(() => {
+                            targetMessage.style.backgroundColor = '';
+                        }, 2000);
+                    }
+                };
+            } else {
+                pinnedMessageBar.classList.remove('active');
+                pinnedMessageBar.innerHTML = '';
+                pinnedMessageBar.onclick = null;
+            }
+        });
+
+        function resetPinnedMessageBar() {
+            pinnedMessageBar.classList.remove('active');
+            pinnedMessageBar.innerHTML = '';
+            pinnedMessageBar.onclick = null;
+        }
+
+        function joinRoom_original(roomId, roomName) {
+        }
+
+        const originalJoinRoom = joinRoom;
+        joinRoom = function (roomId, roomName) {
+            resetPinnedMessageBar();
+            originalJoinRoom(roomId, roomName);
+        }
+
+        const originalStartPrivateChat = startPrivateChat;
+        startPrivateChat = function (userId, username, avatar) {
+            resetPinnedMessageBar();
+            originalStartPrivateChat(userId, username, avatar);
+        }
     </script>
