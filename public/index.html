@@ -392,7 +392,7 @@
 
         #messages {
             list-style: none;
-            padding: 70px;
+            padding: 45px;
             flex: 1;
             overflow-y: auto;
             display: flex;
@@ -614,21 +614,24 @@
         .more-actions-menu {
             display: none;
             position: absolute;
-            bottom: 40px;
-            right: 0;
+            top: 50%;
+            right: calc(100% + 8px);
+            transform: translateY(-50%);
             background-color: white;
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
             z-index: 100;
             overflow: hidden;
-            width: 120px;
+            width: 100px;
         }
 
-        .more-actions-menu.active {
+        .more-actions-menu.active,
+        .more-actions-menu-right.active {
             display: block;
         }
 
-        .more-actions-menu button {
+        .more-actions-menu button,
+        .more-actions-menu-right button {
             background: none;
             border: none;
             width: 100%;
@@ -637,9 +640,13 @@
             cursor: pointer;
             color: #050505;
             font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
-        .more-actions-menu button:hover {
+        .more-actions-menu button:hover,
+        .more-actions-menu-right button:hover {
             background-color: #f0f2f5;
         }
 
@@ -894,6 +901,104 @@
         .pinned-message-bar strong {
             color: #050505;
         }
+
+        /* Dán vào cuối thẻ <style> */
+
+        .reply-preview {
+            display: none;
+            /* Ẩn mặc định */
+            padding: 8px 15px;
+            background-color: #f0f2f5;
+            border-top: 1px solid #e0e0e0;
+            font-size: 13px;
+            color: #65676b;
+        }
+
+        .reply-preview-content {
+            border-left: 3px solid #667eea;
+            padding-left: 10px;
+            background-color: #e9eaf3;
+            border-radius: 4px;
+            padding: 5px 10px;
+            position: relative;
+        }
+
+        .reply-preview-user {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .reply-preview-text {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 95%;
+        }
+
+        .cancel-reply-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: none;
+            border: none;
+            font-size: 16px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .reply-quote-container {
+            background-color: rgba(0, 0, 0, 0.05);
+            padding: 6px 10px;
+            border-radius: 8px;
+            border-left: 3px solid #667eea;
+            margin-bottom: 5px;
+            cursor: pointer;
+            opacity: 0.8;
+            transition: opacity 0.2s;
+        }
+
+        #messages>li.sent-message .reply-quote-container {
+            background-color: rgba(255, 255, 255, 0.15);
+            border-left-color: #fff;
+        }
+
+        .reply-quote-container:hover {
+            opacity: 1;
+        }
+
+        .reply-quote-user {
+            font-weight: 600;
+            font-size: 0.9em;
+        }
+
+        #messages>li.sent-message .reply-quote-user {
+            color: #e0e0e0;
+        }
+
+        #messages>li.received-message .reply-quote-user {
+            color: #2c3e50;
+        }
+
+        .reply-quote-text {
+            font-size: 0.9em;
+            white-space: pre-wrap;
+            word-break: break-word;
+            opacity: 0.9;
+        }
+
+        .more-actions-menu-right {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: calc(100% + 8px);
+            transform: translateY(-50%);
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            z-index: 100;
+            overflow: hidden;
+            width: 120px;
+        }
     </style>
 </head>
 
@@ -985,6 +1090,8 @@
 
             <div id="typingIndicator" class="typing-indicator"></div>
 
+            <div id="replyPreview" class="reply-preview"></div>
+
             <form id="form" style="display: none;">
                 <input id="input" autocomplete="off" placeholder="Nhập tin nhắn..." />
                 <button type="submit">Gửi</button>
@@ -1047,6 +1154,8 @@
 
         let typingTimeout;
         let typingUsers = {};
+        let currentReplyInfo = null;
+        let currentPinnedMessageId = null;
         let fullHistory = [];
         let searchResults = [];
         let currentResultIndex = -1;
@@ -1328,6 +1437,25 @@
                 item.className = 'system-message';
                 item.innerHTML = msg.text;
             } else {
+                let replyHtml = '';
+                if (msg.replyTo) {
+                    if (msg.replyTo.isDeleted) {
+                        replyHtml = `
+                            <div class="reply-quote-container" style="font-style: italic; opacity: 0.7;">
+                                <div class="reply-quote-text">${msg.replyTo.text}</div>
+                            </div>
+                        `;
+                    } else {
+                        const repliedUser = msg.replyTo.user || msg.replyTo.senderUsername;
+                        replyHtml = `
+                            <div class="reply-quote-container" onclick="scrollToMessage('${msg.replyTo.messageId}')">
+                                <div class="reply-quote-user">${repliedUser}</div>
+                                <div class="reply-quote-text">${msg.replyTo.text}</div>
+                            </div>
+                        `;
+                    }
+                }
+
                 let reactionsHtml = '';
                 if (msg.reactions && Object.keys(msg.reactions).length > 0) {
                     reactionsHtml = '<div class="reactions-container">';
@@ -1342,46 +1470,58 @@
 
                 const avatarImg = messageAvatar ? `<img src="${messageAvatar}" alt="${messageSender}" class="message-avatar">` : '';
                 const editedIndicator = msg.edited ? '<span class="edited-indicator">(đã sửa)</span>' : '';
+
                 const actionsHtml = `
-                <div class="message-actions">
+            <div class="message-actions">
+                <div style="position: relative;">
+                    <button class="action-btn react-btn" onclick="showReactionPicker(event, '${msg.messageId}')">😊</button>
+                    <div id="reaction-picker-${msg.messageId}" class="reaction-picker">
+                        <span onclick="addReaction('${msg.messageId}', '👍')">👍</span>
+                        <span onclick="addReaction('${msg.messageId}', '❤️')">❤️</span>
+                        <span onclick="addReaction('${msg.messageId}', '😂')">😂</span>
+                        <span onclick="addReaction('${msg.messageId}', '😮')">😮</span>
+                        <span onclick="addReaction('${msg.messageId}', '😢')">😢</span>
+                        <span onclick="addReaction('${msg.messageId}', '😡')">😡</span>
+                    </div>
+                </div>
+                
+                ${isSentMessage ? `
+                    <!-- Menu cho tin nhắn của BẠN (hiện bên trái) -->
                     <div style="position: relative;">
-                        <button class="action-btn react-btn" onclick="showReactionPicker(event, '${msg.messageId}')">😊</button>
-                        <div id="reaction-picker-${msg.messageId}" class="reaction-picker">
-                            <span onclick="addReaction('${msg.messageId}', '👍')">👍</span>
-                            <span onclick="addReaction('${msg.messageId}', '❤️')">❤️</span>
-                            <span onclick="addReaction('${msg.messageId}', '😂')">😂</span>
-                            <span onclick="addReaction('${msg.messageId}', '😮')">😮</span>
-                            <span onclick="addReaction('${msg.messageId}', '😢')">😢</span>
-                            <span onclick="addReaction('${msg.messageId}', '😡')">😡</span>
+                        <button class="action-btn more-btn" onclick="toggleMoreMenu(event, '${msg.messageId}')">⋯</button>
+                        <div id="more-menu-${msg.messageId}" class="more-actions-menu">
+                            <button onclick="showEditInput('${msg.messageId}')">✏️ Sửa</button>
+                            <button onclick="deleteMessage('${msg.messageId}')">🗑️ Xóa</button>
+                            <button onclick="pinMessage('${msg.messageId}')">📌 Ghim</button>
+                            <button onclick="initiateReply('${msg.messageId}')">↩️ Trả lời</button> 
                         </div>
                     </div>
-                    ${isSentMessage ? `
-                        <div style="position: relative;">
-                            <button class="action-btn more-btn" onclick="toggleMoreMenu(event, '${msg.messageId}')">⋯</button>
-                            <div id="more-menu-${msg.messageId}" class="more-actions-menu">
-                                <button onclick="showEditInput('${msg.messageId}')">✏️ Sửa</button>
-                                <button onclick="deleteMessage('${msg.messageId}')">🗑️ Xóa</button>
-                                <button onclick="pinMessage('${msg.messageId}')">📌 Ghim</button>
-                            </div>
+                ` : `
+                    <!-- Menu cho tin nhắn của NGƯỜI KHÁC (hiện bên phải) -->
+                    <div style="position: relative;">
+                        <button class="action-btn more-btn" onclick="toggleMoreMenuRight(event, '${msg.messageId}')">⋯</button>
+                        <div id="more-menu-right-${msg.messageId}" class="more-actions-menu-right">
+                            <button onclick="pinMessage('${msg.messageId}')">📌 Ghim</button>
+                            <button onclick="initiateReply('${msg.messageId}')">↩️ Trả lời</button>
                         </div>
-                    ` : ''}
-                </div>
-            `;
+                    </div>
+                `}
+            </div>
+        `;
 
                 item.innerHTML = `
-                ${avatarImg}
-                <div class="bubble-container">
-                    <div class="message-content">
-                        <span class="user">${messageSender}</span>
-                        <div class="message-text">${msg.text}</div>
-                        <span class="timestamp">${formatTime(msg.timestamp)}${editedIndicator}</span>
-                        
-                        <!-- SỬA LỖI: Đưa reactions vào TRONG message-content -->
-                        ${reactionsHtml} 
-                    </div>
-                </div>
-                ${actionsHtml}
-            `;
+        ${avatarImg}
+        <div class="bubble-container">
+            <div class="message-content">
+                <span class="user">${messageSender}</span>
+                ${replyHtml}
+                <div class="message-text">${msg.text}</div>
+                <span class="timestamp">${formatTime(msg.timestamp)}${editedIndicator}</span>
+                ${reactionsHtml} 
+            </div>
+        </div>
+        ${actionsHtml}
+    `;
 
                 item.className = '';
                 item.classList.add(isSentMessage ? 'sent-message' : 'received-message');
@@ -1396,7 +1536,16 @@
         function toggleMoreMenu(event, messageId) {
             event.stopPropagation();
             const menu = document.getElementById(`more-menu-${messageId}`);
-            document.querySelectorAll('.more-actions-menu, .reaction-picker').forEach(m => {
+            document.querySelectorAll('.more-actions-menu, .more-actions-menu-right, .reaction-picker').forEach(m => {
+                if (m.id !== menu.id) m.classList.remove('active');
+            });
+            menu.classList.toggle('active');
+        }
+
+        function toggleMoreMenuRight(event, messageId) {
+            event.stopPropagation();
+            const menu = document.getElementById(`more-menu-right-${messageId}`);
+            document.querySelectorAll('.more-actions-menu, .more-actions-menu-right, .reaction-picker').forEach(m => {
                 if (m.id !== menu.id) m.classList.remove('active');
             });
             menu.classList.toggle('active');
@@ -1417,7 +1566,7 @@
         }
 
         window.addEventListener('click', () => {
-            document.querySelectorAll('.more-actions-menu, .reaction-picker').forEach(m => m.classList.remove('active'));
+            document.querySelectorAll('.more-actions-menu, .more-actions-menu-right, .reaction-picker').forEach(m => m.classList.remove('active'));
         });
 
         socket.on('message reacted', (updatedMessage) => {
@@ -1461,6 +1610,57 @@
             }
         }
 
+        const replyPreview = document.getElementById('replyPreview');
+
+        // Hàm được gọi khi nhấn nút "Trả lời"
+        function initiateReply(messageId) {
+            const messageElement = document.querySelector(`li[data-message-id="${messageId}"]`);
+            if (!messageElement) return;
+
+            const user = messageElement.querySelector('.user').textContent;
+            const text = messageElement.querySelector('.message-text').innerText;
+
+            currentReplyInfo = {
+                messageId,
+                user,
+                text
+            };
+
+            // Hiển thị thanh preview
+            replyPreview.innerHTML = `
+        <div class="reply-preview-content">
+            <div class="reply-preview-user">Đang trả lời ${user}</div>
+            <div class="reply-preview-text">${text}</div>
+            <button class="cancel-reply-btn" onclick="cancelReply()">×</button>
+        </div>
+    `;
+            replyPreview.style.display = 'block';
+            input.focus();
+        }
+
+        // Hàm để hủy trạng thái trả lời
+        function cancelReply() {
+            currentReplyInfo = null;
+            replyPreview.style.display = 'none';
+            replyPreview.innerHTML = '';
+        }
+
+        // Hàm để cuộn đến tin nhắn gốc
+        function scrollToMessage(messageId) {
+            const targetMessage = document.querySelector(`li[data-message-id="${messageId}"]`);
+            if (targetMessage) {
+                targetMessage.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+                targetMessage.style.transition = 'background-color 0.5s';
+                targetMessage.style.backgroundColor = 'rgba(255, 229, 100, 0.5)';
+                setTimeout(() => {
+                    targetMessage.style.backgroundColor = '';
+                }, 2000);
+            } else {
+                console.log("Không tìm thấy tin nhắn để cuộn đến.");
+            }
+        }
+
         function deleteMessage(messageId) {
             if (confirm('Bạn có chắc muốn xóa tin nhắn này không?')) {
                 socket.emit('delete message', { messageId, chatId: currentActiveChat.id });
@@ -1469,23 +1669,16 @@
         }
 
         socket.on('message edited', (updatedMessage) => {
-            const messageElement = document.querySelector(`li[data-message-id="${updatedMessage.messageId}"]`);
-            if (messageElement) {
-                const messageTextDiv = messageElement.querySelector('.message-text');
-                const timestampSpan = messageElement.querySelector('.timestamp');
-                if (messageTextDiv) {
-                    messageTextDiv.innerHTML = updatedMessage.text;
-                }
-                if (timestampSpan) {
-                    const editedIndicator = '<span class="edited-indicator">(đã sửa)</span>';
-                    if (!timestampSpan.innerHTML.includes(editedIndicator)) {
-                        timestampSpan.innerHTML += editedIndicator;
-                    }
-                }
-            }
+            appendMessage(updatedMessage);
         });
 
         socket.on('message deleted', ({ messageId }) => {
+            if (messageId === currentPinnedMessageId) {
+                pinnedMessageBar.innerHTML = `<strong>📌 Tin nhắn đã ghim đã bị xóa.</strong>`;
+                pinnedMessageBar.onclick = null; 
+                currentPinnedMessageId = null; 
+            }
+
             const messageElement = document.querySelector(`li[data-message-id="${messageId}"]`);
             if (messageElement) {
                 messageElement.remove();
@@ -1494,15 +1687,24 @@
 
         form.addEventListener('submit', (e) => {
             e.preventDefault();
-            if (input.value.trim()) {
-                const messageText = input.value.trim();
-                if (currentActiveChat.type === 'room') {
-                    socket.emit('chat message', { text: messageText });
-                } else if (currentActiveChat.type === 'private') {
-                    socket.emit('send private message', { receiverUserId: currentActiveChat.receiverId, text: messageText });
+            const messageText = input.value.trim();
+            if (messageText) {
+                const payload = { text: messageText };
+
+                if (currentReplyInfo) {
+                    payload.replyTo = { messageId: currentReplyInfo.messageId };
                 }
+
+                if (currentActiveChat.type === 'room') {
+                    socket.emit('chat message', payload);
+                } else if (currentActiveChat.type === 'private') {
+                    payload.receiverUserId = currentActiveChat.receiverId;
+                    socket.emit('send private message', payload);
+                }
+
                 input.value = '';
                 input.focus();
+                cancelReply();
             }
         });
 
@@ -1712,10 +1914,11 @@
             if (chatId !== currentActiveChat.id) return;
 
             if (pinnedMessage) {
+                currentPinnedMessageId = pinnedMessage.messageId;
                 pinnedMessageBar.innerHTML = `
-            <strong>📌 Tin nhắn đã ghim:</strong> 
-            <span>${pinnedMessage.user || pinnedMessage.senderUsername}: ${pinnedMessage.text}</span>
-        `;
+                    <strong>📌 Tin nhắn đã ghim:</strong> 
+                    <span>${pinnedMessage.user || pinnedMessage.senderUsername}: ${pinnedMessage.text}</span>
+                `;
                 pinnedMessageBar.classList.add('active');
                 pinnedMessageBar.onclick = () => {
                     const targetMessage = document.querySelector(`li[data-message-id="${pinnedMessage.messageId}"]`);
@@ -1729,6 +1932,7 @@
                     }
                 };
             } else {
+                currentPinnedMessageId = null;
                 pinnedMessageBar.classList.remove('active');
                 pinnedMessageBar.innerHTML = '';
                 pinnedMessageBar.onclick = null;

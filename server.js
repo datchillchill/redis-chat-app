@@ -515,7 +515,7 @@ io.on('connection', (socket) => {
       }
   }); 
 
-  // Xử lý tin nhắn trong phòng chat
+  // Gửi tin nhắn trong phòng chat
   socket.on('chat message', async (msg) => {
       try {
           const roomId = socketRoomMap[socketId];
@@ -541,28 +541,53 @@ io.on('connection', (socket) => {
           const ORDER_ZSET_KEY = `order:${roomId}`;
           const CHANNEL_NAME = `room:${roomId}:updates`;
 
-          const messageId = uuidv4(); 
+          let replyToObject = null;
+          if (msg.replyTo && msg.replyTo.messageId) {
+              const originalMessageString = await redis.hget(MESSAGES_HASH_KEY, msg.replyTo.messageId);
+              if (originalMessageString) {
+                  const originalMessage = JSON.parse(originalMessageString);
+                  const originalUser = originalMessage.user || originalMessage.senderUsername;
+                  const originalText = originalMessage.text;
+
+                  if (originalUser && originalText) {
+                      replyToObject = {
+                          messageId: originalMessage.messageId,
+                          user: originalUser,
+                          text: originalText.substring(0, 75) + (originalText.length > 75 ? '...' : '')
+                      };
+                  }
+              }
+          }
+
+          const messageId = uuidv4();
           const timestamp = Date.now();
 
           const messageObject = {
               messageId: messageId,
-              roomId: roomId, 
+              roomId: roomId,
               user: username,
               text: sanitizedText,
               timestamp: timestamp,
               userId: userId,
               avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`,
-              reactions: {}
+              reactions: {},
+              replyTo: replyToObject
           };
-          
 
           const messageString = JSON.stringify(messageObject);
 
           const pipeline = redis.pipeline();
           pipeline.hset(MESSAGES_HASH_KEY, messageId, messageString);
           pipeline.zadd(ORDER_ZSET_KEY, timestamp, messageId);
-          pipeline.expire(MESSAGES_HASH_KEY, MESSAGE_RETENTION_SECONDS); 
-          pipeline.expire(ORDER_ZSET_KEY, 604800); 
+          pipeline.expire(MESSAGES_HASH_KEY, MESSAGE_RETENTION_SECONDS);
+          pipeline.expire(ORDER_ZSET_KEY, 604800);
+
+          if (msg.replyTo && msg.replyTo.messageId) {
+              const REPLIES_TO_KEY = `replies_to:${msg.replyTo.messageId}`;
+              pipeline.sadd(REPLIES_TO_KEY, messageId);
+              pipeline.expire(REPLIES_TO_KEY, MESSAGE_RETENTION_SECONDS);
+          }
+          
           await pipeline.exec();
 
           await redis.incr('stats:totalMessages');
@@ -571,7 +596,7 @@ io.on('connection', (socket) => {
           pubClient.publish(CHANNEL_NAME, messageString);
           const onlineUserIds = await redis.smembers(ALL_ONLINE_USERS_KEY);
           for (const onlineUserId of onlineUserIds) {
-              if (onlineUserId !== userId) { 
+              if (onlineUserId !== userId) {
                   const newCount = await redis.hincrby(`unread_counts:${onlineUserId}`, roomId, 1);
                   io.to(onlineUserId).emit('unread_update', { chatId: roomId, count: newCount });
               }
@@ -622,26 +647,62 @@ io.on('connection', (socket) => {
   });
 
   // Xử lý xóa tin nhắn
-  socket.on('delete message', async ({ messageId, chatId }) => { 
+  socket.on('delete message', async ({ messageId, chatId }) => {
       try {
           const userId = socket.data.userId;
-          if (!chatId || !userId) return; 
+          if (!chatId || !userId) return;
 
-          const MESSAGES_HASH_KEY = `messages:${chatId}`; 
-          const ORDER_ZSET_KEY = `order:${chatId}`; 
+          const MESSAGES_HASH_KEY = `messages:${chatId}`;
+          const ORDER_ZSET_KEY = `order:${chatId}`;
 
           const messageString = await redis.hget(MESSAGES_HASH_KEY, messageId);
           if (!messageString) return;
 
           const messageObject = JSON.parse(messageString);
-
           if (messageObject.userId !== userId && messageObject.senderId !== userId) {
               return socket.emit('error', 'Bạn không có quyền xóa tin nhắn này.');
+          }
+
+          const PINNED_KEY = `pinned_message:${chatId}`;
+          const currentlyPinnedId = await redis.get(PINNED_KEY);
+
+          if (currentlyPinnedId === messageId) {
+              await redis.del(PINNED_KEY);
+
+              const payload = { chatId, pinnedMessage: null };
+              if (chatId.startsWith('private:')) {
+                  const participants = chatId.split(':');
+                  io.to(participants[1]).to(participants[2]).emit('message_pinned', payload);
+              } else {
+                  io.to(chatId).emit('message_pinned', payload);
+              }
+          }
+
+          const REPLIES_TO_KEY = `replies_to:${messageId}`;
+          const replyingMessageIds = await redis.smembers(REPLIES_TO_KEY);
+
+          for (const replyingId of replyingMessageIds) {
+              const replyingMessageString = await redis.hget(MESSAGES_HASH_KEY, replyingId);
+              if (replyingMessageString) {
+                  const replyingMessageObject = JSON.parse(replyingMessageString);
+                  if (replyingMessageObject.replyTo) {
+                      replyingMessageObject.replyTo.text = "Tin nhắn đã bị xóa";
+                      replyingMessageObject.replyTo.isDeleted = true;
+                  }
+                  await redis.hset(MESSAGES_HASH_KEY, replyingId, JSON.stringify(replyingMessageObject));
+                  if (chatId.startsWith('private:')) {
+                      const participants = chatId.split(':');
+                      io.to(participants[1]).to(participants[2]).emit('message edited', replyingMessageObject);
+                  } else {
+                      io.to(chatId).emit('message edited', replyingMessageObject);
+                  }
+              }
           }
 
           const pipeline = redis.pipeline();
           pipeline.hdel(MESSAGES_HASH_KEY, messageId);
           pipeline.zrem(ORDER_ZSET_KEY, messageId);
+          pipeline.del(REPLIES_TO_KEY);
           await pipeline.exec();
 
           if (chatId.startsWith('private:')) {
@@ -655,7 +716,7 @@ io.on('connection', (socket) => {
           console.error('Lỗi xóa tin nhắn:', error);
           socket.emit('error', 'Lỗi khi xóa tin nhắn.');
       }
-  });     
+  });
 
   // Xử lý thả icon vào tin nhắn 
   socket.on('react to message', async ({ messageId, emoji, chatId }) => { 
@@ -730,11 +791,9 @@ io.on('connection', (socket) => {
 
           let newPinnedMessage = null;
 
-          // Nếu người dùng bấm vào tin nhắn đang được ghim -> Bỏ ghim
           if (currentPinnedId === messageId) {
               await redis.del(PINNED_KEY);
           } else {
-              // Ngược lại -> Ghim tin nhắn mới
               const messageString = await redis.hget(`messages:${chatId}`, messageId);
               if (messageString) {
                   await redis.set(PINNED_KEY, messageId);
@@ -792,8 +851,8 @@ io.on('connection', (socket) => {
       }
   });
 
-  // Xử lý tin nhắn riêng tư 
-  socket.on('send private message', async ({ receiverUserId, text }) => {
+  // Gửi tin nhắn riêng tư
+  socket.on('send private message', async ({ receiverUserId, text, replyTo }) => {
       try {
           const senderUserId = socket.data.userId;
           const senderUsername = socket.data.username;
@@ -825,6 +884,24 @@ io.on('connection', (socket) => {
           const MESSAGES_HASH_KEY = `messages:${privateChatId}`;
           const ORDER_ZSET_KEY = `order:${privateChatId}`;
           
+          let replyToObject = null;
+          if (replyTo && replyTo.messageId) {
+              const originalMessageString = await redis.hget(MESSAGES_HASH_KEY, replyTo.messageId);
+              if (originalMessageString) {
+                  const originalMessage = JSON.parse(originalMessageString);
+                  const originalUser = originalMessage.user || originalMessage.senderUsername;
+                  const originalText = originalMessage.text;
+
+                  if (originalUser && originalText) {
+                      replyToObject = {
+                          messageId: originalMessage.messageId,
+                          user: originalUser,
+                          text: originalText.substring(0, 75) + (originalText.length > 75 ? '...' : '')
+                      };
+                  }
+              }
+          }
+
           const messageId = uuidv4();
           const timestamp = Date.now();
 
@@ -837,7 +914,8 @@ io.on('connection', (socket) => {
               text: sanitizedText,
               timestamp: timestamp,
               avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${senderUsername}`,
-              reactions: {}
+              reactions: {},
+              replyTo: replyToObject
           };
 
           const messageString = JSON.stringify(messageObject);
@@ -847,18 +925,27 @@ io.on('connection', (socket) => {
           pipeline.zadd(ORDER_ZSET_KEY, timestamp, messageId);
           pipeline.expire(MESSAGES_HASH_KEY, PRIVATE_CHAT_TTL);
           pipeline.expire(ORDER_ZSET_KEY, PRIVATE_CHAT_TTL);
+
+          // === DÒNG CODE BỊ THIẾU TRƯỚC ĐÂY ĐÃ ĐƯỢC THÊM VÀO ĐÂY ===
+          // Nếu đây là một tin nhắn trả lời, lưu lại mối quan hệ
+          if (replyTo && replyTo.messageId) {
+              const REPLIES_TO_KEY = `replies_to:${replyTo.messageId}`;
+              pipeline.sadd(REPLIES_TO_KEY, messageId);
+              pipeline.expire(REPLIES_TO_KEY, PRIVATE_CHAT_TTL);
+          }
+          // === KẾT THÚC PHẦN BỔ SUNG ===
+          
           await pipeline.exec();
           
           await redis.incr('stats:totalMessages');
           await redis.hincrby(`user:${senderUserId}`, 'messageCount', 1);
 
           socket.emit('private message', messageObject);
-
           io.to(receiverUserId).emit('private message', messageObject);
           const newCount = await redis.hincrby(`unread_counts:${receiverUserId}`, privateChatId, 1);
           io.to(receiverUserId).emit('unread_update', { chatId: privateChatId, count: newCount });
 
-          await renewPresence(senderUserId); 
+          await renewPresence(senderUserId);
       } catch (error) {
           console.error('Lỗi gửi tin nhắn riêng tư:', error);
           socket.emit('error', 'Lỗi gửi tin nhắn riêng tư');
@@ -877,18 +964,15 @@ io.on('connection', (socket) => {
               return socket.emit('error', 'Bạn cần đăng nhập để xem lịch sử chat riêng.');
           }
 
-          // Tạo ID duy nhất cho cuộc trò chuyện riêng tư
           const chatParticipants = [senderUserId, targetUserId].sort();
           const privateChatId = `private:${chatParticipants[0]}:${chatParticipants[1]}`;
 
           const MESSAGES_HASH_KEY = `messages:${privateChatId}`;
           const ORDER_ZSET_KEY = `order:${privateChatId}`;
 
-          // Lấy các messageId theo đúng thứ tự từ ZSET
           const messageIds = await redis.zrange(ORDER_ZSET_KEY, -PRIVATE_CHAT_HISTORY_LIMIT, -1);
 
           if (messageIds.length > 0) {
-              // Lấy dữ liệu của các tin nhắn từ HASH
               const historyMessages = await redis.hmget(MESSAGES_HASH_KEY, ...messageIds);
               const formattedHistory = historyMessages
                   .filter(msg => msg)
@@ -910,7 +994,7 @@ io.on('connection', (socket) => {
       const onlineUsersDetails = [];
       for (const userId of onlineUserIds) {
           const userProfile = await redis.hgetall(`user:${userId}`);
-          if (userProfile && getUserOnlineStatus(userId)) { // Chỉ thêm nếu socket còn đang kết nối
+          if (userProfile && getUserOnlineStatus(userId)) { 
             onlineUsersDetails.push({
                 userId: userProfile.userId,
                 username: userProfile.username,
@@ -943,29 +1027,22 @@ io.on('connection', (socket) => {
           const username = socket.data.username;
           console.log(`❌ Người dùng ngắt kết nối: ${socket.id} (User: ${username || 'N/A'})`);
 
-          // Đợi một khoảng thời gian ngắn để xử lý trường hợp reload trang
           setTimeout(async () => {
-              // Lấy tất cả các socket đang trong phòng của user này
               const userSockets = io.sockets.adapter.rooms.get(userId);
 
-              // Nếu không còn socket nào của user này đang kết nối
               if (!userSockets || userSockets.size === 0) {
                   console.log(`User ${username} is now fully offline.`);
                   if (userId) {
-                      // Xóa userId khỏi tập hợp online users toàn cầu
                       await redis.srem(ALL_ONLINE_USERS_KEY, userId);
-                      // Cập nhật trạng thái người dùng thành offline
                       await redis.hset(`user:${userId}`, 'status', 'offline');
-                      
-                      // Phát đi cập nhật danh sách người dùng online toàn cầu
+
                       await broadcastOnlineUsers();
                   }
               } else {
                   console.log(`User ${username} is still online with other connections.`);
               }
-          }, 500); // Đợi 500ms
+          }, 500); 
 
-          // Logic xử lý rời phòng chat chung (giữ nguyên)
           const currentRoomId = socketRoomMap[socketId];
           if (currentRoomId && username && userId) {
               subClient.unsubscribe(`room:${currentRoomId}:updates`);
@@ -1003,20 +1080,16 @@ io.on('connection', (socket) => {
           const MESSAGES_HASH_KEY = `messages:${chatId}`;
           const ORDER_ZSET_KEY = `order:${chatId}`;
 
-          // Lấy TOÀN BỘ messageId từ ZSET (từ đầu đến cuối)
           const allMessageIds = await redis.zrange(ORDER_ZSET_KEY, 0, -1);
 
           if (allMessageIds.length > 0) {
-              // Lấy nội dung của tất cả tin nhắn
               const allMessages = await redis.hmget(MESSAGES_HASH_KEY, ...allMessageIds);
-              // Chuyển đổi từ chuỗi JSON sang đối tượng JavaScript
               const formattedHistory = allMessages
                   .filter(msg => msg)
                   .map(msg => JSON.parse(msg));
-              // Gửi dữ liệu về cho client thông qua callback
               callback(formattedHistory);
           } else {
-              callback([]); // Trả về mảng rỗng nếu không có tin nhắn nào
+              callback([]);
           }
       } catch (error) {
           console.error('Lỗi lấy toàn bộ lịch sử:', error);
