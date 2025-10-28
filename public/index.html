@@ -999,6 +999,48 @@
             overflow: hidden;
             width: 120px;
         }
+
+        #uploadBtn {
+            background: #e4e6eb;
+            border: none;
+            padding: 0;
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            font-size: 18px;
+            cursor: pointer;
+            color: #65676b;
+            transition: background-color 0.2s;
+            margin-right: 5px;
+        }
+
+        #uploadBtn:hover {
+            background-color: #d8dadf;
+        }
+
+        .message-image {
+            max-width: 100%;
+            max-height: 250px;
+            border-radius: 10px;
+            margin-top: 5px;
+            cursor: pointer;
+        }
+
+        .message-file-link {
+            display: block;
+            background-color: rgba(0, 0, 0, 0.05);
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 5px;
+            text-decoration: none;
+            color: #0056b3;
+            font-weight: 500;
+        }
+
+        #messages>li.sent-message .message-file-link {
+            background-color: rgba(255, 255, 255, 0.15);
+            color: #fff;
+        }
     </style>
 </head>
 
@@ -1040,9 +1082,6 @@
                     <span id="currentUsername"></span>
                     <button class="logout-btn" id="logoutBtn">Đăng Xuất</button>
                 </div>
-                <button id="showStatsBtn"
-                    style="width: 100%; margin-top: 10px; padding: 8px; background: linear-gradient(135deg, #3498db, #2980b9); color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: 600;">Xem
-                    Thống Kê</button>
             </div>
 
             <div class="sidebar-content">
@@ -1093,22 +1132,17 @@
             <div id="replyPreview" class="reply-preview"></div>
 
             <form id="form" style="display: none;">
+                <input type="file" id="fileInput" style="display: none;"
+                    accept="image/*, application/pdf, .doc, .docx, .xls, .xlsx, .zip, .rar">
+
+                <button type="button" id="uploadBtn" title="Đính kèm tệp">📎</button>
+
                 <input id="input" autocomplete="off" placeholder="Nhập tin nhắn..." />
                 <button type="submit">Gửi</button>
             </form>
         </div>
     </div>
-    <div id="statsModal"
-        style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6);">
-        <div class="modal-content"
-            style="background-color: #fefefe; margin: 15% auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 500px; border-radius: 10px; color: #2c3e50;">
-            <span class="close" id="closeStatsModal"
-                style="color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer;">&times;</span>
-            <h2 style="margin-bottom: 15px;">Thống Kê Hệ Thống Chat</h2>
-            <ul id="stats-list" style="list-style-type: none; padding: 0;">
-            </ul>
-        </div>
-    </div>
+
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
@@ -1138,10 +1172,6 @@
         const userListUl = document.getElementById('user-list');
         const userCountSpan = document.getElementById('user-count');
         const chatHeaderTitle = document.getElementById('chatHeaderTitle');
-        const statsModal = document.getElementById('statsModal');
-        const showStatsBtn = document.getElementById('showStatsBtn');
-        const closeStatsModal = document.getElementById('closeStatsModal');
-        const statsListUl = document.getElementById('stats-list');
         const searchBtn = document.getElementById('searchBtn');
         const searchContainer = document.getElementById('searchContainer');
         const searchInput = document.getElementById('searchInput');
@@ -1151,6 +1181,9 @@
         const closeSearchBtn = document.getElementById('closeSearchBtn');
         const typingIndicator = document.getElementById('typingIndicator');
         const pinnedMessageBar = document.getElementById('pinnedMessageBar');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const fileInput = document.getElementById('fileInput');
+        const messagesOnScreen = new Map();
 
         let typingTimeout;
         let typingUsers = {};
@@ -1163,6 +1196,88 @@
         let unreadCounts = {};
         let currentRoomList = [];
         let currentOnlineUsers = [];
+
+        function getMessageContentPreview(msg) {
+            if (msg.text) {
+                return msg.text;
+            }
+            if (msg.file && msg.file.name) {
+                const extension = msg.file.name.split('.').pop().toLowerCase();
+                const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
+                if (imageExtensions.includes(extension)) {
+                    return '[Hình ảnh]';
+                } else {
+                    return `[Tệp tin] ${msg.file.name}`;
+                }
+            }
+            return '';
+        }
+
+        // Khi nhấn nút kẹp giấy, kích hoạt input file ẩn
+        uploadBtn.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        // Khi người dùng đã chọn một file
+        fileInput.addEventListener('change', async (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            if (file.size > 100 * 1024 * 1024) {
+                showError('Tệp tin quá lớn. Vui lòng chọn tệp dưới 100MB.');
+                fileInput.value = '';
+                return;
+            }
+
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = '⏳';
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: formData
+                });
+
+                if (!response.ok) throw new Error('Tải lên thất bại.');
+
+                const data = await response.json();
+
+                const payload = {
+                    text: input.value.trim(),
+                    file: {
+                        url: data.filePath,
+                        name: file.name
+                    }
+                };
+
+                if (currentReplyInfo) {
+                    payload.replyTo = { messageId: currentReplyInfo.messageId };
+                }
+
+                if (currentActiveChat.type === 'room') {
+                    socket.emit('chat message', payload);
+                } else if (currentActiveChat.type === 'private') {
+                    payload.receiverUserId = currentActiveChat.receiverId;
+                    socket.emit('send private message', payload);
+                }
+
+                input.value = '';
+                cancelReply();
+
+            } catch (err) {
+                showError(err.message || 'Lỗi khi tải tệp lên.');
+            } finally {
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = '📎';
+                fileInput.value = '';
+            }
+        });
 
         function updateSidebarUI() {
             const currentRoomId = currentActiveChat.type === 'room' ? currentActiveChat.id : null;
@@ -1423,6 +1538,7 @@
         const formatTime = (timestamp) => new Date(timestamp).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
 
         const appendMessage = (msg) => {
+            messagesOnScreen.set(msg.messageId, msg);
             const existingItem = document.querySelector(`li[data-message-id="${msg.messageId}"]`);
             const item = existingItem || document.createElement('li');
             if (!existingItem) {
@@ -1453,6 +1569,17 @@
                                 <div class="reply-quote-text">${msg.replyTo.text}</div>
                             </div>
                         `;
+                    }
+                }
+                let fileHtml = '';
+                if (msg.file && msg.file.url) {
+                    const extension = msg.file.name.split('.').pop().toLowerCase();
+                    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
+
+                    if (imageExtensions.includes(extension)) {
+                        fileHtml = `<img src="${msg.file.url}" class="message-image" alt="Hình ảnh đính kèm" onclick="window.open('${msg.file.url}', '_blank')">`;
+                    } else {
+                        fileHtml = `<a href="${msg.file.url}" target="_blank" download="${msg.file.name}" class="message-file-link">📄 ${msg.file.name}</a>`;                     
                     }
                 }
 
@@ -1515,6 +1642,7 @@
             <div class="message-content">
                 <span class="user">${messageSender}</span>
                 ${replyHtml}
+                ${fileHtml}
                 <div class="message-text">${msg.text}</div>
                 <span class="timestamp">${formatTime(msg.timestamp)}${editedIndicator}</span>
                 ${reactionsHtml} 
@@ -1614,26 +1742,25 @@
 
         // Hàm được gọi khi nhấn nút "Trả lời"
         function initiateReply(messageId) {
-            const messageElement = document.querySelector(`li[data-message-id="${messageId}"]`);
-            if (!messageElement) return;
+            const originalMessage = messagesOnScreen.get(messageId);
+            if (!originalMessage) return;
 
-            const user = messageElement.querySelector('.user').textContent;
-            const text = messageElement.querySelector('.message-text').innerText;
+            const user = originalMessage.user || originalMessage.senderUsername;
+            const previewText = getMessageContentPreview(originalMessage);
 
             currentReplyInfo = {
                 messageId,
                 user,
-                text
+                text: previewText
             };
 
-            // Hiển thị thanh preview
             replyPreview.innerHTML = `
-        <div class="reply-preview-content">
-            <div class="reply-preview-user">Đang trả lời ${user}</div>
-            <div class="reply-preview-text">${text}</div>
-            <button class="cancel-reply-btn" onclick="cancelReply()">×</button>
-        </div>
-    `;
+                <div class="reply-preview-content">
+                    <div class="reply-preview-user">Đang trả lời ${user}</div>
+                    <div class="reply-preview-text">${previewText}</div>
+                    <button class="cancel-reply-btn" onclick="cancelReply()">×</button>
+                </div>
+            `;
             replyPreview.style.display = 'block';
             input.focus();
         }
@@ -1673,10 +1800,11 @@
         });
 
         socket.on('message deleted', ({ messageId }) => {
+            messagesOnScreen.delete(messageId);
             if (messageId === currentPinnedMessageId) {
                 pinnedMessageBar.innerHTML = `<strong>📌 Tin nhắn đã ghim đã bị xóa.</strong>`;
-                pinnedMessageBar.onclick = null; 
-                currentPinnedMessageId = null; 
+                pinnedMessageBar.onclick = null;
+                currentPinnedMessageId = null;
             }
 
             const messageElement = document.querySelector(`li[data-message-id="${messageId}"]`);
@@ -1778,34 +1906,6 @@
 
         socket.on('room created', (roomName) => {
             showError(`Phòng "${roomName}" đã được tạo thành công`);
-        });
-
-        showStatsBtn.addEventListener('click', () => {
-            socket.emit('get stats');
-        });
-
-        closeStatsModal.addEventListener('click', () => {
-            statsModal.style.display = 'none';
-        });
-
-        window.addEventListener('click', (event) => {
-            if (event.target == statsModal) {
-                statsModal.style.display = 'none';
-            }
-        });
-
-        socket.on('stats', (stats) => {
-            if (stats) {
-                statsListUl.innerHTML = `
-                <li style="padding: 8px 0; border-bottom: 1px solid #eee;">Tổng số tin nhắn đã gửi: <strong>${stats.totalMessages}</strong></li>
-                <li style="padding: 8px 0; border-bottom: 1px solid #eee;">Tổng số người dùng đã đăng ký: <strong>${stats.totalRegisteredUsers}</strong></li>
-                <li style="padding: 8px 0; border-bottom: 1px solid #eee;">Số phòng đang hoạt động: <strong>${stats.activeRoomsCount}</strong></li>
-                <li style="padding: 8px 0;">Danh sách phòng: <strong>${stats.activeRoomsList.join(', ')}</strong></li>
-            `;
-                statsModal.style.display = 'block';
-            } else {
-                showError('Không thể tải thống kê.');
-            }
         });
 
         searchBtn.addEventListener('click', () => {
@@ -1910,15 +2010,18 @@
             document.querySelectorAll('.more-actions-menu').forEach(m => m.classList.remove('active'));
         }
 
+        // Thay thế sự kiện message_pinned cũ
         socket.on('message_pinned', ({ chatId, pinnedMessage }) => {
             if (chatId !== currentActiveChat.id) return;
 
             if (pinnedMessage) {
                 currentPinnedMessageId = pinnedMessage.messageId;
+                const previewText = getMessageContentPreview(pinnedMessage);
+
                 pinnedMessageBar.innerHTML = `
-                    <strong>📌 Tin nhắn đã ghim:</strong> 
-                    <span>${pinnedMessage.user || pinnedMessage.senderUsername}: ${pinnedMessage.text}</span>
-                `;
+            <strong>📌 Tin nhắn đã ghim:</strong> 
+            <span>${pinnedMessage.user || pinnedMessage.senderUsername}: ${previewText}</span>
+        `;
                 pinnedMessageBar.classList.add('active');
                 pinnedMessageBar.onclick = () => {
                     const targetMessage = document.querySelector(`li[data-message-id="${pinnedMessage.messageId}"]`);

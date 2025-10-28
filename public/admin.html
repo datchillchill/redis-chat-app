@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Dashboard</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; background: #f0f2f5; display: flex; height: 100vh; }
+        
+        /* Sidebar */
+        .sidebar { width: 220px; background: #2c3e50; color: white; display: flex; flex-direction: column; }
+        .sidebar-header { padding: 20px; background: #1a252f; }
+        .sidebar-header h1 { margin: 0; font-size: 20px; }
+        .sidebar-nav { flex-grow: 1; }
+        .sidebar-nav ul { list-style: none; padding: 0; margin: 0; }
+        .sidebar-nav a { display: block; padding: 15px 20px; color: #bdc3c7; text-decoration: none; border-left: 3px solid transparent; }
+        .sidebar-nav a:hover { background: #34495e; color: white; }
+        .sidebar-nav a.active { background: #34495e; color: white; border-left-color: #3498db; }
+        .sidebar-footer { padding: 20px; }
+        #logoutBtn { background: #c0392b; color: white; border: none; padding: 10px; width: 100%; border-radius: 4px; cursor: pointer; }
+
+        /* Main Content */
+        .main-content { flex-grow: 1; padding: 30px; overflow-y: auto; }
+        .content-section { display: none; }
+        .content-section.active { display: block; }
+        
+        /* Table styles */
+        table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden; }
+        th, td { padding: 15px; border-bottom: 1px solid #eee; text-align: left; }
+        th { background: #f8f9fa; font-weight: 600; }
+        tbody tr:last-child td { border-bottom: none; }
+        .action-btn { background: #e74c3c; color: white; border:none; padding: 5px 10px; border-radius: 4px; cursor:pointer; }
+    </style>
+</head>
+<body>
+    <!-- =============== SIDEBAR =============== -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h1>Admin</h1>
+        </div>
+        <nav class="sidebar-nav">
+            <ul>
+                <li><a href="#users" id="nav-users" class="nav-link active">Quản lý Người dùng</a></li>
+                <li><a href="#rooms" id="nav-rooms" class="nav-link">Quản lý Phòng</a></li>
+                <!-- Thêm các mục quản lý khác ở đây -->
+            </ul>
+        </nav>
+        <div class="sidebar-footer">
+            <button id="logoutBtn">Đăng xuất</button>
+        </div>
+    </div>
+
+    <!-- =============== MAIN CONTENT =============== -->
+    <main class="main-content">
+        <!-- Section quản lý người dùng -->
+        <section id="users-section" class="content-section active">
+            <h2>Quản lý Người dùng</h2>
+            <table id="usersTable">
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>User ID</th>
+                        <th>Ngày tham gia</th>
+                        <th>Số tin nhắn</th>
+                        <th>Status</th>
+                        <th>Hành động</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </section>
+
+        <!-- Section quản lý phòng -->
+        <section id="rooms-section" class="content-section">
+            <h2>Quản lý Phòng</h2>
+            <table id="roomsTable">
+                 <thead>
+                    <tr>
+                        <th>Tên phòng</th>
+                        <th>Hành động</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </section>
+    </main>
+
+    <script>
+        // === LOGIC ĐIỀU HƯỚNG VÀ HIỂN THỊ ===
+        const navLinks = document.querySelectorAll('.nav-link');
+        const contentSections = document.querySelectorAll('.content-section');
+
+        function showSection(targetId) {
+            navLinks.forEach(link => link.classList.remove('active'));
+            contentSections.forEach(section => section.classList.remove('active'));
+            
+            document.getElementById(`nav-${targetId}`).classList.add('active');
+            document.getElementById(`${targetId}-section`).classList.add('active');
+        }
+
+        navLinks.forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const targetId = e.target.id.split('-')[1];
+                showSection(targetId);
+            });
+        });
+
+        // === LOGIC TẢI DỮ LIỆU ===
+        async function fetchUsers() {
+            try {
+                const response = await fetch('/api/admin/users');
+                if (!response.ok) throw new Error('Lỗi tải dữ liệu người dùng.');
+                
+                const users = await response.json();
+                const tableBody = document.querySelector('#usersTable tbody');
+                tableBody.innerHTML = ''; 
+
+                users.sort((a,b) => new Date(b.joinedAt) - new Date(a.joinedAt));
+
+                users.forEach(user => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td><strong>${user.username}</strong></td>
+                        <td>${user.userId}</td>
+                        <td>${new Date(user.joinedAt).toLocaleString('vi-VN')}</td>
+                        <td>${user.messageCount}</td>
+                        <td>${user.status}</td>
+                        <td><button class="action-btn">Xóa</button></td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            } catch (err) {
+                console.error(err);
+                document.querySelector('#usersTable tbody').innerHTML = '<tr><td colspan="6" style="text-align: center; color: red;">Lỗi tải dữ liệu.</td></tr>';
+            }
+        }
+
+        async function fetchRooms() {
+            try {
+                const response = await fetch('/api/admin/rooms');
+                if (!response.ok) throw new Error('Lỗi tải dữ liệu phòng.');
+                
+                const rooms = await response.json();
+                const tableBody = document.querySelector('#roomsTable tbody');
+                tableBody.innerHTML = '';
+
+                rooms.forEach(room => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td># ${room}</td>
+                        <td><button class="action-btn">Xóa</button></td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            } catch (err) {
+                console.error(err);
+                 document.querySelector('#roomsTable tbody').innerHTML = '<tr><td colspan="2" style="text-align: center; color: red;">Lỗi tải dữ liệu.</td></tr>';
+            }
+        }
+
+        // Tải dữ liệu khi trang được mở lần đầu
+        document.addEventListener('DOMContentLoaded', () => {
+            showSection('users'); // Hiển thị mục Users mặc định
+            fetchUsers();
+            fetchRooms(); // Tải sẵn dữ liệu
+        });
+
+        // Xử lý đăng xuất
+        document.getElementById('logoutBtn').addEventListener('click', async () => {
+            await fetch('/admin/logout', { method: 'POST' });
+            window.location.href = '/admin-login.html';
+        });
+    </script>
+</body>
+</html>
