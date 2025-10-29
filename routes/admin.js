@@ -100,6 +100,71 @@ function adminRoutes(app, redis, JWT_SECRET, defaultRooms, ALL_ROOMS_KEY, io, pu
         }
     });
 
+    // API Endpoint để THÊM một phòng chat mới
+    apiRouter.post('/rooms', async (req, res) => {
+        const { roomName } = req.body;
+
+        if (!roomName || roomName.trim().length < 2) {
+            return res.status(400).json({ success: false, message: 'Tên phòng không hợp lệ.' });
+        }
+
+        try {
+            const roomExists = await redis.sismember(ALL_ROOMS_KEY, roomName);
+            if (roomExists) {
+                return res.status(409).json({ success: false, message: 'Tên phòng đã tồn tại.' });
+            }
+
+            await redis.sadd(ALL_ROOMS_KEY, roomName);
+
+            const updatedRooms = await redis.smembers(ALL_ROOMS_KEY);
+            pubClient.publish(`app:rooms:list_update`, JSON.stringify(updatedRooms));
+            io.to('admins').emit('admin_rooms_updated');
+            
+            res.status(201).json({ success: true, message: `Đã tạo phòng ${roomName}` });
+        } catch (error) {
+            console.error(`Lỗi tạo phòng ${roomName}:`, error);
+            res.status(500).send('Lỗi server khi tạo phòng.');
+        }
+    });
+
+    // API Endpoint để SỬA tên một phòng chat
+    apiRouter.put('/rooms', async (req, res) => {
+        const { oldRoomName, newRoomName } = req.body;
+
+        if (!oldRoomName || !newRoomName || newRoomName.trim().length < 2) {
+            return res.status(400).json({ success: false, message: 'Tên phòng cũ và mới không hợp lệ.' });
+        }
+        if (defaultRooms.includes(oldRoomName)) {
+            return res.status(403).json({ success: false, message: 'Không thể sửa tên phòng mặc định.' });
+        }
+
+        try {
+            const newRoomExists = await redis.sismember(ALL_ROOMS_KEY, newRoomName);
+            if (newRoomExists) {
+                return res.status(409).json({ success: false, message: 'Tên phòng mới đã tồn tại.' });
+            }
+
+            const pipeline = redis.pipeline();
+            // 1. Xóa tên cũ, thêm tên mới
+            pipeline.srem(ALL_ROOMS_KEY, oldRoomName);
+            pipeline.sadd(ALL_ROOMS_KEY, newRoomName);
+            // 2. Đổi tên các key chứa dữ liệu của phòng
+            pipeline.rename(`messages:${oldRoomName}`, `messages:${newRoomName}`);
+            pipeline.rename(`order:${oldRoomName}`, `order:${newRoomName}`);
+            pipeline.rename(`pinned_message:${oldRoomName}`, `pinned_message:${newRoomName}`);
+            await pipeline.exec();
+
+            const updatedRooms = await redis.smembers(ALL_ROOMS_KEY);
+            pubClient.publish(`app:rooms:list_update`, JSON.stringify(updatedRooms));
+            io.to('admins').emit('admin_rooms_updated');
+
+            res.status(200).json({ success: true, message: 'Đã cập nhật tên phòng.' });
+        } catch (error) {
+            console.error(`Lỗi sửa phòng ${oldRoomName}:`, error);
+            res.status(500).send('Lỗi server khi sửa phòng.');
+        }
+    });
+
     app.use('/api/admin', apiRouter);
 }
 

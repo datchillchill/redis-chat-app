@@ -35,6 +35,29 @@ const subClient = new Redis({
 redis.on('error', (err) => console.error('Redis lỗi:', err));
 redis.on('connect', () => console.log('✅ Redis đã kết nối'));
 
+// Bắt đầu lắng nghe các kênh Redis để phát sóng sự kiện
+subClient.on('message', async (channel, message) => {
+  try {
+    const channelParts = channel.split(':');
+    const type = channelParts[0]; 
+    const targetId = channelParts[1];
+    const updateType = channelParts[2]; 
+
+    // Nếu có tin nhắn mới trong một phòng, phát nó đến những người trong phòng đó
+    if (type === 'room' && updateType === 'updates') {
+      const messageObject = JSON.parse(message);
+      io.to(targetId).emit('chat message', messageObject);
+    } 
+    // Nếu danh sách phòng chung thay đổi, báo cho tất cả người dùng
+    else if (type === 'app' && targetId === 'rooms' && updateType === 'list_update') {
+      const rooms = JSON.parse(message);
+      io.emit('room list', rooms); 
+    }
+  } catch (e) {
+    console.error("Lỗi phân tích tin nhắn từ Redis Pub/Sub:", e);
+  }
+});
+
 // === CÁC BIẾN VÀ HÀM TRỢ GIÚP CHUNG ===
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const ADMIN_TOKEN_SECRET = JWT_SECRET + '-admin';
@@ -166,10 +189,11 @@ io.use((socket, next) => {
         if (token) {
             try {
                 jwt.verify(token, ADMIN_TOKEN_SECRET);
-                socket.isAdmin = true;
-            } catch (err) {}
+                socket.isAdmin = true; 
+            } catch (err) {
+            }
         }
-        next();
+        next(); 
     });
 });
 
@@ -181,6 +205,7 @@ initializeChat(io, redis, pubClient, subClient, {
     getMessageContentPreview, validateMessage, checkRateLimit, sanitizeMessage,
     MESSAGE_RETENTION_SECONDS, PRIVATE_CHAT_TTL, defaultRooms,
     MESSAGE_HISTORY_LIMIT, PRIVATE_CHAT_HISTORY_LIMIT, JWT_SECRET,
+    io,
     uuidv4, bcrypt
 });
 

@@ -12,18 +12,18 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background-image: linear-gradient(135deg, #00c6ff 0%, #0072ff 100%);
+            background-repeat: no-repeat;
+            background-attachment: fixed;
             min-height: 100vh;
-            display: flex;
         }
 
         .auth-container {
             width: 100%;
-            height: 100%;
+            min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         }
 
         .auth-box {
@@ -64,8 +64,8 @@
 
         .form-group input:focus {
             outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            border-color: #00c6ff;
+            box-shadow: 0 0 0 3px rgba(0, 198, 255, 0.2);
         }
 
         .auth-buttons {
@@ -86,13 +86,13 @@
         }
 
         .btn-login {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #00c6ff 0%, #0072ff 100%);
             color: white;
         }
 
         .btn-login:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 16px rgba(102, 126, 234, 0.5);
+            box-shadow: 0 6px 16px rgba(0, 114, 255, 0.5);
         }
 
         .btn-register {
@@ -114,7 +114,7 @@
         .toggle-text button {
             background: none;
             border: none;
-            color: #667eea;
+            color: #007bff;
             font-weight: 600;
             cursor: pointer;
         }
@@ -1143,6 +1143,8 @@
         </div>
     </div>
 
+    <audio id="notificationSound" src="/notification.mp3" preload="auto"></audio>
+
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
@@ -1184,6 +1186,7 @@
         const uploadBtn = document.getElementById('uploadBtn');
         const fileInput = document.getElementById('fileInput');
         const messagesOnScreen = new Map();
+        const notificationSound = document.getElementById('notificationSound');
 
         let typingTimeout;
         let typingUsers = {};
@@ -1392,6 +1395,39 @@
             messages.appendChild(errorDiv);
             messages.scrollTop = messages.scrollHeight;
             setTimeout(() => { errorDiv.remove(); }, 5000);
+        }
+
+        function showBrowserNotification(title, body, icon) {
+            if (!("Notification" in window)) {
+                console.log("Trình duyệt không hỗ trợ thông báo.");
+                return;
+            }
+
+            if (Notification.permission === "granted") {
+                new Notification(title, { body: body, icon: icon });
+            } else if (Notification.permission !== "denied") {
+                Notification.requestPermission().then(function (permission) {
+                    if (permission === "granted") {
+                        new Notification(title, { body: body, icon: icon });
+                    }
+                });
+            }
+        }
+
+        function handleNewMessageNotification(msg) {
+            // Chỉ kích hoạt nếu tab đang không được focus
+            if (document.hidden) {
+                notificationSound.volume = 0.4; 
+                notificationSound.play().catch(e => console.error("Lỗi phát âm thanh:", e));
+
+                const sender = msg.user || msg.senderUsername;
+                const previewText = getMessageContentPreview(msg);
+                const avatar = msg.avatar;
+                
+                const body = previewText.length > 50 ? previewText.substring(0, 50) + '...' : previewText;
+                
+                showBrowserNotification(sender, body, avatar);
+            }
         }
 
         toggleLink.addEventListener('click', () => { currentMode = currentMode === 'login' ? 'register' : 'login'; updateAuthForm(); });
@@ -2062,4 +2098,8 @@
             resetPinnedMessageBar();
             originalStartPrivateChat(userId, username, avatar);
         }
+
+        socket.on('new_message_notification', (msg) => {
+            handleNewMessageNotification(msg);
+        });
     </script>
