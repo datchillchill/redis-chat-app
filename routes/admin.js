@@ -1,9 +1,9 @@
-// routes/admin.js
-
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const path = require('path');
 const cookieParser = require('cookie-parser');
+const { v4: uuidv4 } = require('uuid');
+const bcrypt = require('bcryptjs');
 
 function adminRoutes(app, redis, JWT_SECRET, defaultRooms, ALL_ROOMS_KEY, io, pubClient) {
     const ADMIN_USER = 'admin';
@@ -71,6 +71,90 @@ function adminRoutes(app, redis, JWT_SECRET, defaultRooms, ALL_ROOMS_KEY, io, pu
         }
     });
 
+    // API Endpoint để THÊM một người dùng mới
+    apiRouter.post('/users', async (req, res) => {
+        const { username, password } = req.body;
+
+        if (!username || username.trim().length < 2 || !/^[a-zA-Z0-9_-]+$/.test(username.trim())) {
+            return res.status(400).json({ success: false, message: 'Tên người dùng không hợp lệ.' });
+        }
+        if (!password || password.length < 6) {
+            return res.status(400).json({ success: false, message: 'Mật khẩu phải có ít nhất 6 ký tự.' });
+        }
+
+        try {
+            const usernameKey = `username:${username.toLowerCase()}`;
+            if (await redis.get(usernameKey)) {
+                return res.status(409).json({ success: false, message: 'Tên người dùng đã tồn tại.' });
+            }
+
+            const userId = uuidv4();
+            const hashedPassword = await bcrypt.hash(password, 10);
+
+            await redis.hset(`user:${userId}`,
+                'userId', userId,
+                'username', username,
+                'password', hashedPassword,
+                'joinedAt', new Date().toISOString(),
+                'avatar', `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`,
+                'messageCount', 0,
+                'status', 'offline'
+            );
+            await redis.set(usernameKey, userId);
+
+            io.to('admins').emit('admin_users_updated');
+            res.status(201).json({ success: true, message: `Đã tạo người dùng ${username}` });
+        } catch (error) {
+            console.error(`Lỗi tạo người dùng ${username}:`, error);
+            res.status(500).send('Lỗi server khi tạo người dùng.');
+        }
+    });
+
+    // API Endpoint để SỬA thông tin người dùng
+    apiRouter.put('/users', async (req, res) => {
+        const { userId, newUsername, newPassword } = req.body;
+
+        if (!userId) return res.status(400).json({ success: false, message: 'Thiếu User ID.' });
+        if (!newUsername || newUsername.trim().length < 2) {
+            return res.status(400).json({ success: false, message: 'Tên người dùng mới không hợp lệ.' });
+        }
+
+        try {
+            const userProfile = await redis.hgetall(`user:${userId}`);
+            if (!userProfile.username) {
+                return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng.' });
+            }
+
+            const pipeline = redis.pipeline();
+
+            // Xử lý thay đổi mật khẩu (nếu có)
+            if (newPassword && newPassword.length >= 6) {
+                const hashedPassword = await bcrypt.hash(newPassword, 10);
+                pipeline.hset(`user:${userId}`, 'password', hashedPassword);
+            }
+
+            // Xử lý thay đổi username (nếu có)
+            if (newUsername !== userProfile.username) {
+                const newUsernameKey = `username:${newUsername.toLowerCase()}`;
+                if (await redis.get(newUsernameKey)) {
+                    return res.status(409).json({ success: false, message: 'Tên người dùng mới đã tồn tại.' });
+                }
+                // Xóa key username cũ và tạo key mới
+                pipeline.del(`username:${userProfile.username.toLowerCase()}`);
+                pipeline.set(newUsernameKey, userId);
+                pipeline.hset(`user:${userId}`, 'username', newUsername);
+            }
+
+            await pipeline.exec();
+            io.to('admins').emit('admin_users_updated');
+            res.status(200).json({ success: true, message: 'Đã cập nhật thông tin người dùng.' });
+
+        } catch (error) {
+            console.error(`Lỗi sửa người dùng ${userId}:`, error);
+            res.status(500).send('Lỗi server khi sửa người dùng.');
+        }
+    });
+
     apiRouter.get('/rooms', async (req, res) => {
         try {
             const rooms = await redis.smembers(ALL_ROOMS_KEY);
@@ -97,6 +181,45 @@ function adminRoutes(app, redis, JWT_SECRET, defaultRooms, ALL_ROOMS_KEY, io, pu
         } catch (error) {
             console.error(`Lỗi xóa phòng ${roomName}:`, error);
             res.status(500).send('Lỗi server.');
+        }
+    });
+
+    // API Endpoint để XÓA một người dùng
+    apiRouter.delete('/users', async (req, res) => {
+        const { userId } = req.body;
+
+        if (!userId) {
+            return res.status(400).json({ success: false, message: 'Thiếu User ID.' });
+        }
+
+        try {
+            const userProfile = await redis.hgetall(`user:${userId}`);
+
+            if (!userProfile.username) {
+                return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng.' });
+            }
+
+            // >> KIỂM TRA ĐIỀU KIỆN: KHÔNG XÓA NẾU USER ĐANG ONLINE <<
+            if (userProfile.status === 'online') {
+                return res.status(403).json({ success: false, message: 'Không thể xóa người dùng đang online.' });
+            }
+
+            const pipeline = redis.pipeline();
+            // 1. Xóa hash chính chứa thông tin người dùng
+            pipeline.del(`user:${userId}`);
+            // 2. Xóa key dùng để tra cứu username khi login
+            pipeline.del(`username:${userProfile.username.toLowerCase()}`);
+            // 3. Dọn dẹp tin nhắn chưa đọc (nếu có)
+            pipeline.del(`unread_counts:${userId}`);
+            
+            await pipeline.exec();
+
+            io.to('admins').emit('admin_users_updated');
+            res.status(200).json({ success: true, message: 'Đã xóa người dùng thành công.' });
+
+        } catch (error) {
+            console.error(`Lỗi xóa người dùng ${userId}:`, error);
+            res.status(500).send('Lỗi server khi xóa người dùng.');
         }
     });
 

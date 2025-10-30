@@ -28,6 +28,7 @@ function initializeChat(io, redis, pubClient, subClient, helpers) {
                     if (!validatePassword(password)) return socket.emit('error', 'Mật khẩu phải có ít nhất 6 ký tự.');
                     const result = await createUserProfile(username, password, socketId);
                     if (result.error) return socket.emit('error', result.error);
+                    io.to('admins').emit('admin_users_updated');
                     socket.emit('auth_success', { userId: result.userId, token: result.token, username: username });
                 } catch (error) {
                     console.error('Lỗi đăng ký:', error);
@@ -53,6 +54,7 @@ function initializeChat(io, redis, pubClient, subClient, helpers) {
                     await redis.sadd(ALL_ONLINE_USERS_KEY, result.userId);
                     await renewPresence(result.userId);
                     broadcastOnlineUsers();
+                    io.to('admins').emit('admin_users_updated');
                     socket.emit('auth_success', { userId: result.userId, token: result.token, username: result.username });
                 } catch (error) {
                     console.error('Lỗi đăng nhập:', error);
@@ -83,6 +85,7 @@ function initializeChat(io, redis, pubClient, subClient, helpers) {
                     subClient.subscribe(`app:rooms:list_update`);
                     
                     broadcastOnlineUsers();
+                    io.to('admins').emit('admin_users_updated');
                     const unreadCounts = await redis.hgetall(`unread_counts:${decoded.userId}`);
                     socket.emit('all_unread_counts', unreadCounts);
                     socket.emit('auth_verified', { username: userProfile.username, userId: decoded.userId });
@@ -610,6 +613,7 @@ function initializeChat(io, redis, pubClient, subClient, helpers) {
                                 await redis.srem(ALL_ONLINE_USERS_KEY, userId);
                                 await redis.hset(`user:${userId}`, 'status', 'offline');
                                 broadcastOnlineUsers();
+                                io.to('admins').emit('admin_users_updated');
                             }
                         }, 500);
 
