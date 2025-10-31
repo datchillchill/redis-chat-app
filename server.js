@@ -33,7 +33,10 @@ const subClient = new Redis({
 });
 
 redis.on('error', (err) => console.error('Redis lỗi:', err));
-redis.on('connect', () => console.log('✅ Redis đã kết nối'));
+redis.on('connect', () => {
+    console.log('✅ Redis đã kết nối');
+    initializeRooms(); 
+});
 
 // Bắt đầu lắng nghe các kênh Redis để phát sóng sự kiện
 subClient.on('message', async (channel, message) => {
@@ -210,7 +213,6 @@ initializeChat(io, redis, pubClient, subClient, {
 });
 
 // === KHỞI ĐỘNG SERVER ===
-initializeRooms();
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`🚀 Server chạy tại http://localhost:${PORT}`);

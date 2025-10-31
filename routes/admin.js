@@ -288,6 +288,56 @@ function adminRoutes(app, redis, JWT_SECRET, defaultRooms, ALL_ROOMS_KEY, io, pu
         }
     });
 
+    // API Endpoint MỚI: Lấy lịch sử chat (cho cả phòng và chat riêng)
+    apiRouter.get('/chat-history', async (req, res) => {
+        const { type, roomName, user1, user2 } = req.query;
+        const historyLimit = 100; 
+
+        try {
+            let chatId;
+            // --- Trường hợp 1: Lấy lịch sử chat phòng ---
+            if (type === 'room' && roomName) {
+                chatId = roomName;
+            } 
+            // --- Trường hợp 2: Lấy lịch sử chat riêng ---
+            else if (type === 'private' && user1 && user2) {
+                const userId1 = await redis.get(`username:${user1.toLowerCase()}`);
+                const userId2 = await redis.get(`username:${user2.toLowerCase()}`);
+
+                if (!userId1 || !userId2) {
+                    return res.status(404).json({ success: false, message: 'Một hoặc hai người dùng không tồn tại.' });
+                }
+
+                // Sắp xếp userId để tạo ra privateChatId một cách nhất quán
+                const chatParticipants = [userId1, userId2].sort();
+                const privateChatId = `private:${chatParticipants[0]}:${chatParticipants[1]}`;
+                chatId = privateChatId;
+            } 
+            else {
+                return res.status(400).json({ success: false, message: 'Tham số không hợp lệ.' });
+            }
+            
+            // --- Truy vấn Redis để lấy lịch sử ---
+            const messageIds = await redis.zrange(`order:${chatId}`, -historyLimit, -1);
+            
+            if (!messageIds || messageIds.length === 0) {
+                return res.json([]); 
+            }
+            
+            const historyMessages = await redis.hmget(`messages:${chatId}`, ...messageIds);
+            const formattedHistory = historyMessages
+                .filter(msg => msg) 
+                .map(msg => JSON.parse(msg)); 
+
+            res.json(formattedHistory);
+
+        } catch (error) {
+            console.error("Lỗi lấy lịch sử chat:", error);
+            res.status(500).send('Lỗi server khi lấy lịch sử chat.');
+        }
+    });
+
+
     app.use('/api/admin', apiRouter);
 }
 

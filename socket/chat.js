@@ -1,4 +1,5 @@
 const { v4: uuidv4 } = require('uuid');
+const adminWatchingMap = {};
 function initializeChat(io, redis, pubClient, subClient, helpers) {
     const { 
         validateUsername, validatePassword, createUserProfile, authenticateUser,
@@ -11,17 +12,30 @@ function initializeChat(io, redis, pubClient, subClient, helpers) {
     } = helpers;
 
     io.on('connection', (socket) => {
-        // Xử lý kết nối của Admin
+        const socketId = socket.id;
         if (socket.isAdmin) {
             console.log(`🔑 Admin đã kết nối: ${socket.id}`);
             socket.join('admins');
-            return;
-        } 
+            // 1. Khi admin bắt đầu theo dõi một cuộc trò chuyện
+            socket.on('admin_watch_chat', ({ chatId }) => {
+                console.log(`Admin ${socket.id} đang theo dõi ${chatId}`);
+                adminWatchingMap[socket.id] = chatId;
+            });
+
+            // 2. Khi admin ngừng theo dõi 
+            socket.on('admin_stop_watching_chat', () => {
+                if (adminWatchingMap[socket.id]) {
+                    console.log(`Admin ${socket.id} đã ngừng theo dõi ${adminWatchingMap[socket.id]}`);
+                    delete adminWatchingMap[socket.id];
+                }
+            });
+
+        }
+
         // Xử lý kết nối của người dùng thông thường
         else {
-            const socketId = socket.id;
             console.log(`✅ Người dùng mới kết nối: ${socketId}`);
-
+        
             socket.on('register', async ({ username, password }) => {
                 try {
                     if (!validateUsername(username)) return socket.emit('error', 'Tên người dùng không hợp lệ.');
@@ -195,6 +209,12 @@ function initializeChat(io, redis, pubClient, subClient, helpers) {
                     io.to('admins').emit('admin_users_updated');
 
                     pubClient.publish(`room:${roomId}:updates`, messageString);
+                    
+                    for (const adminSocketId in adminWatchingMap) {
+                        if (adminWatchingMap[adminSocketId] === roomId) {
+                            io.to(adminSocketId).emit('admin_new_message', messageObject);
+                        }
+                    }
                     const onlineUserIds = await redis.smembers(ALL_ONLINE_USERS_KEY);
                     for (const onlineUserId of onlineUserIds) {
                         if (onlineUserId !== userId) {
@@ -510,6 +530,11 @@ function initializeChat(io, redis, pubClient, subClient, helpers) {
                     // Gửi tin nhắn đến cả người gửi và người nhận
                     socket.emit('private message', messageObject);
                     io.to(receiverUserId).emit('private message', messageObject);
+                    for (const adminSocketId in adminWatchingMap) {
+                        if (adminWatchingMap[adminSocketId] === privateChatId) {
+                            io.to(adminSocketId).emit('admin_new_message', messageObject);
+                        }
+                    }
                     
                     // Gửi thông báo chưa đọc và KÍCH HOẠT THÔNG BÁO POPUP
                     const receiverSocketId = userIdSocketMap[receiverUserId];
@@ -598,14 +623,21 @@ function initializeChat(io, redis, pubClient, subClient, helpers) {
 
             // Xử lý khi người dùng ngắt kết nối
             socket.on('disconnect', async () => {
+                // Xử lý cho Admin
+                if (socket.isAdmin) {
+                    console.log(`🔑 Admin đã ngắt kết nối: ${socketId}`);
+                    delete adminWatchingMap[socketId];
+                } 
+                // Xử lý cho người dùng thường
+                else {
                     try {
+                        // ... (Toàn bộ code disconnect CŨ của user nằm ở đây)
                         const userId = socket.data.userId;
                         const username = socket.data.username;
                         if (!userId || !username) return;
 
                         console.log(`❌ Người dùng ngắt kết nối: ${socketId} (User: ${username})`);
                         
-                        // Logic kiểm tra multi-tab
                         setTimeout(async () => {
                             const userSockets = io.sockets.adapter.rooms.get(userId);
                             if (!userSockets || userSockets.size === 0) {
@@ -632,8 +664,9 @@ function initializeChat(io, redis, pubClient, subClient, helpers) {
                     } catch (error) {
                         console.error('Lỗi ngắt kết nối:', error);
                     }
+                }
             });
-        } 
+        }
     });
 }
 

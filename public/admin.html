@@ -150,6 +150,7 @@
             <ul>
                 <li><a href="#users" id="nav-users" class="nav-link active">Quản lý Người dùng</a></li>
                 <li><a href="#rooms" id="nav-rooms" class="nav-link">Quản lý Phòng</a></li>
+                <li><a href="#messages" id="nav-messages" class="nav-link">Trình xem Tin nhắn</a></li> 
             </ul>
         </nav>
         <div class="sidebar-footer"><button id="logoutBtn">Đăng xuất</button></div>
@@ -189,6 +190,33 @@
             <div class="add-form">
                 <input type="text" id="newRoomInput" placeholder="Nhập tên phòng mới...">
                 <button id="addRoomBtn">Thêm phòng</button>
+            </div>
+        </section>
+        <section id="messages-section" class="content-section">
+            <h2>Trình xem Lịch sử Chat</h2>
+
+            <div style="margin-bottom: 20px;">
+                <button id="tab-room-chat" style="padding: 10px; border: 1px solid #ccc; background: #eee;">Chat Phòng</button>
+                <button id="tab-private-chat" style="padding: 10px; border: 1px solid #ccc;">Chat Riêng</button>
+            </div>
+
+            <div id="room-chat-controls">
+                <label for="room-select">Chọn phòng:</label>
+                <select id="room-select" style="padding: 8px; min-width: 200px;"></select>
+                <button id="view-room-history-btn" style="padding: 8px 15px; background: #007bff; color: white; border: none; cursor: pointer;">Xem</button>
+            </div>
+
+            <div id="private-chat-controls" style="display: none;">
+                <input type="text" id="user1-input" placeholder="Nhập username người thứ nhất..." style="padding: 8px;">
+                <input type="text" id="user2-input" placeholder="Nhập username người thứ hai..." style="padding: 8px;">
+                <button id="view-private-history-btn" style="padding: 8px 15px; background: #007bff; color: white; border: none; cursor: pointer;">Xem</button>
+            </div>
+
+            <hr style="margin: 20px 0;">
+
+            <h3>Lịch sử tin nhắn:</h3>
+            <div id="message-display-area" style="height: 500px; overflow-y: auto; background: #fdfdfd; border: 1px solid #eee; padding: 15px; border-radius: 8px;">
+                <p style="color: #777;">Vui lòng chọn một cuộc trò chuyện để xem lịch sử.</p>
             </div>
         </section>
     </main>
@@ -242,6 +270,21 @@
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
+        let currentWatchingChatId = null;
+
+        // Lắng nghe tin nhắn real-time từ server
+        socket.on('admin_new_message', (newMessage) => {
+            const messageChatId = newMessage.roomId || `private:${[newMessage.senderId, newMessage.receiverId].sort().join(':')}`;
+            
+            if (messageChatId === currentWatchingChatId) {
+                const placeholder = messageDisplayArea.querySelector('p');
+                if (placeholder && (placeholder.textContent.includes('Không tìm thấy') || placeholder.textContent.includes('Vui lòng chọn'))) {
+                    messageDisplayArea.innerHTML = '';
+                }
+                appendSingleMessage(newMessage);
+                messageDisplayArea.scrollTop = messageDisplayArea.scrollHeight;
+            }
+        });
 
         socket.on('connect', () => {
             console.log('✅ Đã kết nối tới server với tư cách Admin');
@@ -266,8 +309,22 @@
         function showSection(targetId) {
             navLinks.forEach(link => link.classList.remove('active'));
             contentSections.forEach(section => section.classList.remove('active'));
-            document.getElementById(`nav-${targetId}`).classList.add('active');
-            document.getElementById(`${targetId}-section`).classList.add('active');
+
+            const navLink = document.getElementById(`nav-${targetId}`);
+            if (navLink) navLink.classList.add('active'); 
+            
+            const section = document.getElementById(`${targetId}-section`);
+            if (section) section.classList.add('active');
+
+            if (targetId === 'messages') {
+                initializeMessageViewer();
+            }
+            else {
+                if (currentWatchingChatId) {
+                    socket.emit('admin_stop_watching_chat');
+                    currentWatchingChatId = null;
+                }
+            }
         }
 
         navLinks.forEach(link => {
@@ -543,6 +600,152 @@
                 document.getElementById('addUsernameInput').value = '';
                 document.getElementById('addPasswordInput').value = '';
             } catch (err) { alert(`Lỗi: ${err.message}`); }
+        });
+
+        // === LOGIC MỚI CHO TRÌNH XEM TIN NHẮN ===
+        const tabRoomChat = document.getElementById('tab-room-chat');
+        const tabPrivateChat = document.getElementById('tab-private-chat');
+        const roomControls = document.getElementById('room-chat-controls');
+        const privateControls = document.getElementById('private-chat-controls');
+        const roomSelect = document.getElementById('room-select');
+        const messageDisplayArea = document.getElementById('message-display-area');
+
+        // Hàm khởi tạo: Tải danh sách phòng cho dropdown
+        async function initializeMessageViewer() {
+            try {
+                const response = await fetch('/api/admin/rooms');
+                if (!response.ok) throw new Error('Lỗi tải danh sách phòng.');
+                const rooms = await response.json();
+                
+                roomSelect.innerHTML = ''; 
+                rooms.forEach(room => {
+                    const option = document.createElement('option');
+                    option.value = room;
+                    option.textContent = room;
+                    roomSelect.appendChild(option);
+                });
+            } catch (err) {
+                console.error(err);
+                roomSelect.innerHTML = '<option value="">Lỗi tải phòng</option>';
+            }
+        }
+
+        // Xử lý chuyển tab
+        tabRoomChat.addEventListener('click', () => {
+            roomControls.style.display = 'block';
+            privateControls.style.display = 'none';
+            tabRoomChat.style.background = '#eee';
+            tabPrivateChat.style.background = 'white';
+        });
+
+        tabPrivateChat.addEventListener('click', () => {
+            roomControls.style.display = 'none';
+            privateControls.style.display = 'block';
+            tabRoomChat.style.background = 'white';
+            tabPrivateChat.style.background = '#eee';
+        });
+
+        // Hàm chung để gọi API và hiển thị lịch sử
+        async function fetchAndDisplayHistory(url, chatId) { 
+            messageDisplayArea.innerHTML = '<p style="color: #777;">Đang tải lịch sử...</p>';
+
+            // Ngừng theo dõi chat cũ trước khi bắt đầu chat mới
+            if (currentWatchingChatId) {
+                socket.emit('admin_stop_watching_chat');
+            }
+            currentWatchingChatId = chatId; 
+            try {
+                const response = await fetch(url);
+                const history = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(history.message || 'Lỗi không xác định.');
+                }
+
+                renderMessages(history);
+
+                // BẮT ĐẦU THEO DÕI
+                socket.emit('admin_watch_chat', { chatId });
+                console.log(`CLIENT: Gửi yêu cầu theo dõi chatId: ${chatId}`);
+
+            } catch (err) {
+                messageDisplayArea.innerHTML = `<p style="color: red;">Lỗi: ${err.message}</p>`;
+                currentWatchingChatId = null; 
+            }
+        }
+
+        // Hàm "vẽ" tin nhắn ra màn hình
+        function renderMessages(messages) {
+            if (messages.length === 0) {
+                messageDisplayArea.innerHTML = '<p style="color: #777;">Không tìm thấy tin nhắn nào.</p>';
+                return;
+            }
+
+            messageDisplayArea.innerHTML = ''; 
+            messages.forEach(msg => appendSingleMessage(msg));
+        }
+
+        function appendSingleMessage(msg) {
+            const msgDiv = document.createElement('div');
+            msgDiv.style.borderBottom = '1px solid #f0f0f0';
+            msgDiv.style.padding = '10px 0';
+            
+            const sender = msg.user || msg.senderUsername;
+            const timestamp = new Date(msg.timestamp).toLocaleString('vi-VN');
+            
+            let contentHtml = `<p style="margin: 0;">${msg.text || ''}</p>`;
+            if (msg.file && msg.file.url) {
+                contentHtml += `<a href="${msg.file.url}" target="_blank">Tệp đính kèm: ${msg.file.name}</a>`;
+            }
+
+            msgDiv.innerHTML = `
+                <div>
+                    <strong style="color: #0056b3;">${sender}</strong>
+                    <small style="color: #888; margin-left: 10px;">${timestamp}</small>
+                </div>
+                ${contentHtml}
+            `;
+            messageDisplayArea.appendChild(msgDiv);
+        }
+
+        // Gắn sự kiện cho các nút "Xem"
+        document.getElementById('view-room-history-btn').addEventListener('click', () => {
+            const selectedRoom = roomSelect.value;
+            if (selectedRoom) {
+                const url = `/api/admin/chat-history?type=room&roomName=${selectedRoom}`;
+                fetchAndDisplayHistory(url, selectedRoom); 
+            }
+        });
+
+        document.getElementById('view-private-history-btn').addEventListener('click', async () => {
+            const user1 = document.getElementById('user1-input').value.trim();
+            const user2 = document.getElementById('user2-input').value.trim();
+            if (!user1 || !user2) {
+                return alert('Vui lòng nhập tên của cả hai người dùng.');
+            }
+
+            try {
+                // Gọi API để lấy danh sách user và tìm ID
+                const usersResponse = await fetch('/api/admin/users');
+                if (!usersResponse.ok) throw new Error('Không thể lấy danh sách người dùng.');
+                const users = await usersResponse.json();
+
+                const user1Profile = users.find(u => u.username.toLowerCase() === user1.toLowerCase());
+                const user2Profile = users.find(u => u.username.toLowerCase() === user2.toLowerCase());
+
+                if (!user1Profile || !user2Profile) {
+                    return alert('Một hoặc hai người dùng không tồn tại.');
+                }
+
+                // Tạo privateChatId ở client
+                const chatParticipants = [user1Profile.userId, user2Profile.userId].sort();
+                const privateChatId = `private:${chatParticipants[0]}:${chatParticipants[1]}`;
+                const url = `/api/admin/chat-history?type=private&user1=${user1}&user2=${user2}`;
+                
+                fetchAndDisplayHistory(url, privateChatId); 
+            } catch (error) {
+                alert('Lỗi: ' + error.message);
+            }
         });
     </script>
 </body>
