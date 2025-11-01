@@ -127,6 +127,29 @@
             cursor: not-allowed;
         }
 
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 20px;
+        }
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .stat-card h3 {
+            margin: 0 0 10px;
+            font-size: 16px;
+            color: #555;
+        }
+        .stat-card p {
+            margin: 0;
+            font-size: 32px;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
         .action-btn { margin-right: 5px; }
         .action-btn.edit { background: #3498db; color: white; }
         .action-btn.delete { background: #e74c3c; color: white; }
@@ -148,6 +171,7 @@
         </div>
         <nav class="sidebar-nav">
             <ul>
+                <li><a href="#dashboard" id="nav-dashboard" class="nav-link">Bảng điều khiển</a></li>
                 <li><a href="#users" id="nav-users" class="nav-link active">Quản lý Người dùng</a></li>
                 <li><a href="#rooms" id="nav-rooms" class="nav-link">Quản lý Phòng</a></li>
                 <li><a href="#messages" id="nav-messages" class="nav-link">Trình xem Tin nhắn</a></li> 
@@ -157,6 +181,27 @@
     </div>
 
     <main class="main-content">
+        <section id="dashboard-section" class="content-section">
+            <h2>Bảng điều khiển Thống kê</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>👥 Đang Online</h3>
+                    <p id="stat-online-users">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>👤 Tổng người dùng</h3>
+                    <p id="stat-total-users">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>🚪 Tổng số phòng</h3>
+                    <p id="stat-total-rooms">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>💬 Tổng tin nhắn</h3>
+                    <p id="stat-total-messages">0</p>
+                </div>
+            </div>
+        </section>
         <section id="users-section" class="content-section active">
             <h2>Quản lý Người dùng</h2>
             <table id="usersTable">
@@ -267,6 +312,19 @@
                 </div>
             </div>
         </div>
+        <div id="muteUserModal" class="modal-overlay">
+            <div class="modal-box">
+                <h2 id="muteModalTitle">Tắt tiếng người dùng</h2>
+                <div style="margin-top: 15px;">
+                    <label for="muteDurationInput">Thời gian tắt tiếng (phút):</label>
+                    <input type="number" id="muteDurationInput" min="1" value="60" style="width: 100%; padding: 10px; box-sizing: border-box; margin-top: 5px;">
+                </div>
+                <div class="modal-actions">
+                    <button id="cancelMuteUserBtn" style="background: #7f8c8d; color: white;">Hủy</button>
+                    <button id="saveMuteUserBtn" style="background: #e67e22; color: white;">Áp dụng</button>
+                </div>
+            </div>
+        </div>
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
@@ -294,12 +352,29 @@
         socket.on('admin_rooms_updated', () => {
             console.log('Nhận được cập nhật danh sách phòng, tải lại...');
             fetchRooms();
+            if (document.getElementById('dashboard-section').classList.contains('active')) {
+                loadDashboardStats();
+                if (document.getElementById('dashboard-section').classList.contains('active')) {
+                    loadDashboardStats();
+                }
+            }
         });
 
         // Lắng nghe sự kiện cập nhật danh sách người dùng
         socket.on('admin_users_updated', () => {
             console.log('Nhận được cập nhật danh sách người dùng, tải lại...');
             fetchUsers(); 
+            if (document.getElementById('dashboard-section').classList.contains('active')) {
+                loadDashboardStats(); 
+            }
+        });
+
+        // === THÊM SỰ KIỆN MỚI ĐỂ CẬP NHẬT SỐ NGƯỜI ONLINE REAL-TIME ===
+        socket.on('online users list', (users) => {
+            const onlineCountEl = document.getElementById('stat-online-users');
+            if(onlineCountEl) {
+                onlineCountEl.textContent = users.length;
+            }
         });
 
         const navLinks = document.querySelectorAll('.nav-link');
@@ -318,6 +393,8 @@
 
             if (targetId === 'messages') {
                 initializeMessageViewer();
+            } else if (targetId === 'dashboard') { 
+                loadDashboardStats();
             }
             else {
                 if (currentWatchingChatId) {
@@ -394,6 +471,23 @@
                 document.querySelector('#roomsTable tbody').innerHTML = '<tr><td colspan="2" style="text-align: center; color: red;">Lỗi tải dữ liệu.</td></tr>';
             }
         }
+        async function loadDashboardStats() {
+            try {
+                const response = await fetch('/api/admin/stats');
+                if (!response.ok) {
+                    throw new Error('Lỗi tải dữ liệu thống kê.');
+                }
+                const stats = await response.json();
+
+                document.getElementById('stat-online-users').textContent = stats.onlineUsers;
+                document.getElementById('stat-total-users').textContent = stats.totalUsers;
+                document.getElementById('stat-total-rooms').textContent = stats.totalRooms;
+                document.getElementById('stat-total-messages').textContent = stats.totalMessages;
+
+            } catch (err) {
+                console.error(err);
+            }
+        }
 
         // HÀM MỚI ĐỂ XỬ LÝ XÓA PHÒNG
         async function handleDeleteRoom(event) {
@@ -416,7 +510,7 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
-            showSection('users');
+            showSection('dashboard');
             fetchUsers();
             fetchRooms();
         });

@@ -5,7 +5,7 @@ const cookieParser = require('cookie-parser');
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
 
-function adminRoutes(app, redis, JWT_SECRET, defaultRooms, ALL_ROOMS_KEY, io, pubClient) {
+function adminRoutes(app, redis, JWT_SECRET, defaultRooms, ALL_ROOMS_KEY, io, pubClient, ALL_ONLINE_USERS_KEY) {
     const ADMIN_USER = 'admin';
     const ADMIN_PASS = 'admin123';
     const ADMIN_TOKEN_SECRET = JWT_SECRET + '-admin';
@@ -337,6 +337,42 @@ function adminRoutes(app, redis, JWT_SECRET, defaultRooms, ALL_ROOMS_KEY, io, pu
         }
     });
 
+
+    // API Endpoint NÂNG CẤP: Lấy các số liệu thống kê cho Dashboard
+    apiRouter.get('/stats', async (req, res) => {
+        try {
+            let totalUsers = await redis.get('stats:totalUsers');
+
+            // TỰ CHỮA LỖI: Nếu bộ đếm không tồn tại, hãy tính toán lại
+            if (!totalUsers) {
+                const userKeys = await redis.keys('username:*');
+                totalUsers = userKeys.length;
+                // Lưu lại giá trị đúng vào Redis cho những lần gọi sau
+                await redis.set('stats:totalUsers', totalUsers);
+            }
+
+            const [
+                onlineUsersCount,
+                totalRooms,
+                totalMessages
+            ] = await Promise.all([
+                redis.scard(ALL_ONLINE_USERS_KEY),
+                redis.scard(ALL_ROOMS_KEY),
+                redis.get('stats:totalMessages')
+            ]);
+
+            res.json({
+                onlineUsers: onlineUsersCount,
+                totalUsers: parseInt(totalUsers) || 0,
+                totalRooms: totalRooms,
+                totalMessages: parseInt(totalMessages) || 0
+            });
+
+        } catch (error) {
+            console.error("Lỗi lấy dữ liệu thống kê:", error);
+            res.status(500).send('Lỗi server khi lấy thống kê.');
+        }
+    });
 
     app.use('/api/admin', apiRouter);
 }

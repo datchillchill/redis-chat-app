@@ -147,7 +147,7 @@ async function recordUserActivity(userId, roomId = 'global') {
     await redis.sadd(`unique:${roomId}:${new Date().toISOString().split('T')[0]}`, userId);
 }
 async function renewPresence(userId, roomId = 'global') {
-    await redis.expire(ALL_ONLINE_USERS_KEY, USER_PRESENCE_TTL);
+    // await redis.expire(ALL_ONLINE_USERS_KEY, USER_PRESENCE_TTL);
     if (roomId !== 'global') {
         await redis.setex(`presence:user:${roomId}:${userId}`, USER_PRESENCE_TTL, '1');
     }
@@ -178,7 +178,7 @@ app.use(express.json());
 
 // === ROUTES ===
 const adminRoutes = require('./routes/admin');
-adminRoutes(app, redis, JWT_SECRET, defaultRooms, ALL_ROOMS_KEY, io, pubClient);
+adminRoutes(app, redis, JWT_SECRET, defaultRooms, ALL_ROOMS_KEY, io, pubClient, ALL_ONLINE_USERS_KEY);
 
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
