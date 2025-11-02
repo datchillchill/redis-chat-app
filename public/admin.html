@@ -175,6 +175,7 @@
                 <li><a href="#users" id="nav-users" class="nav-link active">Quản lý Người dùng</a></li>
                 <li><a href="#rooms" id="nav-rooms" class="nav-link">Quản lý Phòng</a></li>
                 <li><a href="#messages" id="nav-messages" class="nav-link">Trình xem Tin nhắn</a></li> 
+                <li><a href="#backup" id="nav-backup" class="nav-link">Sao lưu & Khôi phục</a></li> 
             </ul>
         </nav>
         <div class="sidebar-footer"><button id="logoutBtn">Đăng xuất</button></div>
@@ -263,6 +264,25 @@
             <div id="message-display-area" style="height: 500px; overflow-y: auto; background: #fdfdfd; border: 1px solid #eee; padding: 15px; border-radius: 8px;">
                 <p style="color: #777;">Vui lòng chọn một cuộc trò chuyện để xem lịch sử.</p>
             </div>
+        </section>
+        <section id="backup-section" class="content-section">
+            <h2>Sao lưu & Khôi phục Dữ liệu</h2>
+            <p style="margin-bottom: 20px; color: #555;">Tự động sao lưu được cấu hình chạy mỗi 6 giờ. Bạn cũng có thể tạo một bản sao lưu thủ công ngay bây giờ.</p>
+
+            <button id="createBackupBtn" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 30px;">Tạo bản sao lưu ngay</button>
+
+            <h3>Danh sách các bản sao lưu</h3>
+            <table id="backupsTable">
+                <thead>
+                    <tr>
+                        <th>Tên File</th>
+                        <th>Ngày tạo</th>
+                        <th>Kích thước</th>
+                        <th>Hành động</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
         </section>
     </main>
         <div id="editRoomModal" class="modal-overlay">
@@ -387,6 +407,9 @@
 
             const navLink = document.getElementById(`nav-${targetId}`);
             if (navLink) navLink.classList.add('active'); 
+                if (targetId === 'backup') {
+                fetchBackups();
+            }
             
             const section = document.getElementById(`${targetId}-section`);
             if (section) section.classList.add('active');
@@ -841,6 +864,94 @@
                 alert('Lỗi: ' + error.message);
             }
         });
+
+        // --- LOGIC CHO SAO LƯU & KHÔI PHỤC ---
+        async function fetchBackups() {
+            try {
+                const response = await fetch('/api/admin/backups');
+                if (!response.ok) throw new Error('Lỗi tải danh sách sao lưu.');
+                const backups = await response.json();
+                const tableBody = document.querySelector('#backupsTable tbody');
+                tableBody.innerHTML = '';
+
+                if (backups.length === 0) {
+                    tableBody.innerHTML = '<tr><td colspan="4" style="text-align: center;">Chưa có bản sao lưu nào.</td></tr>';
+                    return;
+                }
+
+                backups.forEach(backup => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${backup.name}</td>
+                        <td>${new Date(backup.createdAt).toLocaleString('vi-VN')}</td>
+                        <td>${backup.size}</td>
+                        <td>
+                            <button class="action-btn" onclick="restoreBackup('${backup.name}')" style="background: #2ecc71;" title="Khôi phục">🔄</button>
+                            <button class="action-btn delete" onclick="deleteBackup('${backup.name}')" title="Xóa">🗑️</button>
+                        </td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            } catch (err) {
+                console.error(err);
+                document.querySelector('#backupsTable tbody').innerHTML = '<tr><td colspan="4" style="text-align: center; color: red;">Lỗi tải dữ liệu.</td></tr>';
+            }
+        }
+
+        document.getElementById('createBackupBtn').addEventListener('click', async () => {
+            const btn = document.getElementById('createBackupBtn');
+            btn.disabled = true;
+            btn.textContent = 'Đang xử lý...';
+            try {
+                const response = await fetch('/api/admin/backup', { method: 'POST' });
+                const result = await response.json();
+                alert(result.message);
+                if (result.success) {
+                    fetchBackups();
+                }
+            } catch (err) {
+                alert('Đã xảy ra lỗi khi tạo sao lưu.');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Tạo bản sao lưu ngay';
+            }
+        });
+
+        async function restoreBackup(filename) {
+            const confirmation = prompt(`CẢNH BÁO: Hành động này sẽ GHI ĐÈ toàn bộ dữ liệu hiện tại bằng dữ liệu từ file "${filename}". Hành động này không thể hoàn tác.\n\nĐể xác nhận, vui lòng nhập "KHÔI PHỤC" vào ô bên dưới.`);
+            if (confirmation !== 'KHÔI PHỤC') {
+                alert('Hành động khôi phục đã bị hủy.');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/admin/restore', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename })
+                });
+                const result = await response.json();
+                alert(result.message);
+            } catch (err) {
+                alert('Lỗi nghiêm trọng xảy ra. Vui lòng kiểm tra console của server.');
+            }
+        }
+
+        async function deleteBackup(filename) {
+            if (confirm(`Bạn có chắc chắn muốn xóa vĩnh viễn file sao lưu "${filename}" không?`)) {
+                try {
+                    const response = await fetch(`/api/admin/backups/${filename}`, { method: 'DELETE' });
+                    const result = await response.json();
+                    if (result.success) {
+                        fetchBackups();
+                    } else {
+                        alert(result.message);
+                    }
+                } catch (err) {
+                    alert('Đã xảy ra lỗi khi xóa file.');
+                }
+            }
+        }
     </script>
 </body>
 

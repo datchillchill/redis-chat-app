@@ -4,6 +4,8 @@ const path = require('path');
 const cookieParser = require('cookie-parser');
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
+const fs = require('fs');
+
 
 function adminRoutes(app, redis, JWT_SECRET, defaultRooms, ALL_ROOMS_KEY, io, pubClient, ALL_ONLINE_USERS_KEY) {
     const ADMIN_USER = 'admin';
@@ -371,6 +373,117 @@ function adminRoutes(app, redis, JWT_SECRET, defaultRooms, ALL_ROOMS_KEY, io, pu
         } catch (error) {
             console.error("Lỗi lấy dữ liệu thống kê:", error);
             res.status(500).send('Lỗi server khi lấy thống kê.');
+        }
+    });
+
+    // === CÁC API CHO SAO LƯU VÀ KHÔI PHỤC ===
+    const backupDir = path.join(__dirname, '..', 'backups');
+
+    // API để tạo một bản sao lưu thủ công
+    apiRouter.post('/backup', async (req, res) => {
+        try {
+            await redis.bgsave();
+            const redisDirResult = await redis.config('GET', 'dir');
+            const redisDir = redisDirResult[1];
+            const redisDumpFile = path.join(redisDir, 'dump.rdb');
+
+            await new Promise(resolve => setTimeout(resolve, 5000));
+
+            if (fs.existsSync(redisDumpFile)) {
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                const backupFileName = `backup-${timestamp}.rdb`;
+                fs.copyFileSync(redisDumpFile, path.join(backupDir, backupFileName));
+                res.status(200).json({ success: true, message: `Đã tạo thành công bản sao lưu: ${backupFileName}` });
+            } else {
+                throw new Error('Không tìm thấy file dump.rdb.');
+            }
+        } catch (error) {
+            console.error('Lỗi tạo sao lưu thủ công:', error);
+            res.status(500).json({ success: false, message: 'Lỗi server khi tạo sao lưu.' });
+        }
+    });
+
+    // API để lấy danh sách các bản sao lưu
+    apiRouter.get('/backups', (req, res) => {
+        try {
+            const files = fs.readdirSync(backupDir)
+                .filter(file => file.endsWith('.rdb'))
+                .map(file => {
+                    const stats = fs.statSync(path.join(backupDir, file));
+                    return {
+                        name: file,
+                        size: (stats.size / 1024).toFixed(2) + ' KB',
+                        createdAt: stats.birthtime
+                    };
+                })
+                .sort((a, b) => b.createdAt - a.createdAt);
+            res.json(files);
+        } catch (error) {
+            console.error('Lỗi lấy danh sách sao lưu:', error);
+            res.status(500).json([]);
+        }
+    });
+
+    // API để xóa một bản sao lưu
+    apiRouter.delete('/backups/:filename', (req, res) => {
+        const { filename } = req.params;
+        if (!filename || filename.includes('..') || !filename.endsWith('.rdb')) {
+            return res.status(400).json({ success: false, message: 'Tên file không hợp lệ.' });
+        }
+        try {
+            const filePath = path.join(backupDir, filename);
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+                res.status(200).json({ success: true, message: 'Đã xóa bản sao lưu.' });
+            } else {
+                res.status(404).json({ success: false, message: 'Không tìm thấy file sao lưu.' });
+            }
+        } catch (error) {
+            console.error(`Lỗi xóa file ${filename}:`, error);
+            res.status(500).json({ success: false, message: 'Lỗi server khi xóa file.' });
+        }
+    });
+
+    // API để khôi phục từ một bản sao lưu (PHIÊN BẢN SỬA LỖI HOÀN CHỈNH)
+    apiRouter.post('/restore', async (req, res) => {
+        const { filename } = req.body;
+        if (!filename || !filename.endsWith('.rdb')) {
+            return res.status(400).json({ success: false, message: 'Tên file không hợp lệ.' });
+        }
+
+        const backupFilePath = path.join(backupDir, filename);
+        if (!fs.existsSync(backupFilePath)) {
+            return res.status(404).json({ success: false, message: 'File sao lưu không tồn tại.' });
+        }
+
+        try {
+            console.log(`Bắt đầu quá trình khôi phục từ file: ${filename}`);
+
+            const redisDirResult = await redis.config('GET', 'dir');
+            const redisDir = redisDirResult[1];
+            const redisDumpFile = path.join(redisDir, 'dump.rdb');
+
+            res.status(200).json({
+                success: true,
+                message: `File đã được khôi phục. Server sẽ tự tắt sau 2 giây. VUI LÒNG: 1. Khởi động lại server REDIS. 2. Khởi động lại server Node.js này.`
+            });
+
+            await redis.quit();
+            console.log('Đã ngắt kết nối khỏi Redis.');
+
+            fs.copyFileSync(backupFilePath, redisDumpFile);
+            console.log(`Đã sao chép file sao lưu vào thư mục Redis.`);
+
+            setTimeout(() => {
+                console.log('✅ Khôi phục thành công. Đang tắt server Node.js để hoàn tất quá trình.');
+                process.exit(0);
+            }, 2000);
+
+        } catch (error) {
+            console.error('Lỗi khôi phục:', error);
+            if (!res.headersSent) {
+                res.status(500).json({ success: false, message: 'Lỗi nghiêm trọng khi khôi phục. Vui lòng kiểm tra server.' });
+            }
         }
     });
 

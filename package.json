@@ -17,6 +17,7 @@
     "ioredis": "^5.8.1",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
+    "node-cron": "^4.2.1",
     "socket.io": "^4.8.1",
     "uuid": "^13.0.0"
   }

@@ -10,6 +10,8 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const cookieParser = require('cookie-parser');
 const multer = require('multer');
+const fs = require('fs');
+const cron = require('node-cron');
 
 // === KHỞI TẠO CÁC THÀNH PHẦN CHÍNH ===
 const app = express();
@@ -35,6 +37,8 @@ const subClient = new Redis({
 redis.on('error', (err) => console.error('Redis lỗi:', err));
 redis.on('connect', () => {
     console.log('✅ Redis đã kết nối');
+    redis.del(ALL_ONLINE_USERS_KEY); 
+    
     initializeRooms(); 
 });
 
@@ -210,6 +214,43 @@ initializeChat(io, redis, pubClient, subClient, {
     MESSAGE_HISTORY_LIMIT, PRIVATE_CHAT_HISTORY_LIMIT, JWT_SECRET,
     io,
     uuidv4, bcrypt
+});
+
+// === LOGIC SAO LƯU TỰ ĐỘNG ===
+const backupDir = path.join(__dirname, 'backups');
+if (!fs.existsSync(backupDir)) {
+    fs.mkdirSync(backupDir);
+}
+
+// Lên lịch chạy vào lúc 0h, 6h, 12h, 18h mỗi ngày
+cron.schedule('0 */6 * * *', async () => {
+    try {
+        console.log('⏳ Bắt đầu quá trình sao lưu tự động...');
+        
+        await redis.bgsave();
+
+        const redisDirResult = await redis.config('GET', 'dir');
+        if (!redisDirResult || !redisDirResult[1]) {
+            throw new Error('Không thể lấy được thư mục dữ liệu của Redis.');
+        }
+        const redisDir = redisDirResult[1];
+        const redisDumpFile = path.join(redisDir, 'dump.rdb');
+
+        await new Promise(resolve => setTimeout(resolve, 5000)); 
+
+        if (fs.existsSync(redisDumpFile)) {
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const backupFileName = `backup-${timestamp}.rdb`;
+            const backupFilePath = path.join(backupDir, backupFileName);
+
+            fs.copyFileSync(redisDumpFile, backupFilePath);
+            console.log(`✅ Sao lưu tự động thành công: ${backupFileName}`);
+        } else {
+            console.error('Lỗi sao lưu: Không tìm thấy file dump.rdb.');
+        }
+    } catch (error) {
+        console.error('❌ Lỗi trong quá trình sao lưu tự động:', error);
+    }
 });
 
 // === KHỞI ĐỘNG SERVER ===
