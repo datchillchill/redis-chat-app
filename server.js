@@ -35,8 +35,8 @@ const subClient = new Redis({
 });
 
 redis.on('error', (err) => console.error('Redis lỗi:', err));
-redis.on('connect', () => {
-    console.log('✅ Redis đã kết nối');
+redis.on('ready', () => {
+    console.log('✅ Redis đã sẵn sàng');
     redis.del(ALL_ONLINE_USERS_KEY); 
     
     initializeRooms(); 
@@ -257,4 +257,5 @@ cron.schedule('0 */6 * * *', async () => {
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`🚀 Server chạy tại http://localhost:${PORT}`);
+  console.log(`🔑 Trang đăng nhập Admin: http://localhost:${PORT}/admin-login.html`); 
 });

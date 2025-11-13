@@ -340,18 +340,12 @@ function adminRoutes(app, redis, JWT_SECRET, defaultRooms, ALL_ROOMS_KEY, io, pu
     });
 
 
-    // API Endpoint NÂNG CẤP: Lấy các số liệu thống kê cho Dashboard
+    // admin.js
     apiRouter.get('/stats', async (req, res) => {
         try {
-            let totalUsers = await redis.get('stats:totalUsers');
-
-            // TỰ CHỮA LỖI: Nếu bộ đếm không tồn tại, hãy tính toán lại
-            if (!totalUsers) {
-                const userKeys = await redis.keys('username:*');
-                totalUsers = userKeys.length;
-                // Lưu lại giá trị đúng vào Redis cho những lần gọi sau
-                await redis.set('stats:totalUsers', totalUsers);
-            }
+            // Luôn đếm số lượng người dùng thực tế từ các key 'username:*'
+            const userKeys = await redis.keys('username:*');
+            const totalUsers = userKeys.length;
 
             const [
                 onlineUsersCount,
@@ -365,7 +359,7 @@ function adminRoutes(app, redis, JWT_SECRET, defaultRooms, ALL_ROOMS_KEY, io, pu
 
             res.json({
                 onlineUsers: onlineUsersCount,
-                totalUsers: parseInt(totalUsers) || 0,
+                totalUsers: totalUsers, // Sử dụng giá trị vừa đếm được
                 totalRooms: totalRooms,
                 totalMessages: parseInt(totalMessages) || 0
             });
