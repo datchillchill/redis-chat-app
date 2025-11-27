@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Dashboard</title>
+    <link rel="stylesheet" href="/css/admin.css">
+</head>
+
+<body>
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h1>Admin</h1>
+        </div>
+        <nav class="sidebar-nav">
+            <ul>
+                <li><a href="#dashboard" id="nav-dashboard" class="nav-link">Bảng điều khiển</a></li>
+                <li><a href="#users" id="nav-users" class="nav-link active">Quản lý Người dùng</a></li>
+                <li><a href="#rooms" id="nav-rooms" class="nav-link">Quản lý Phòng</a></li>
+                <li><a href="#messages" id="nav-messages" class="nav-link">Trình xem Tin nhắn</a></li>
+                <li><a href="#backup" id="nav-backup" class="nav-link">Sao lưu & Khôi phục</a></li>
+            </ul>
+        </nav>
+        <div class="sidebar-footer"><button id="logoutBtn">Đăng xuất</button></div>
+    </div>
+
+    <main class="main-content">
+        <section id="dashboard-section" class="content-section">
+            <h2>Bảng điều khiển Thống kê</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>👥 Đang Online</h3>
+                    <p id="stat-online-users">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>👤 Tổng người dùng</h3>
+                    <p id="stat-total-users">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>🚪 Tổng số phòng</h3>
+                    <p id="stat-total-rooms">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>💬 Tổng tin nhắn</h3>
+                    <p id="stat-total-messages">0</p>
+                </div>
+            </div>
+        </section>
+        <section id="users-section" class="content-section active">
+            <h2>Quản lý Người dùng</h2>
+            <table id="usersTable">
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>User ID</th>
+                        <th>Ngày tham gia</th>
+                        <th>Số tin nhắn</th>
+                        <th>Status</th>
+                        <th>Hành động</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+            <div style="margin-top: 20px;">
+                <button id="addUserBtn"
+                    style="padding: 10px 20px; background: #2ecc71; color: white; border: none; border-radius: 4px; cursor: pointer;">Thêm
+                    người dùng</button>
+            </div>
+        </section>
+        <section id="rooms-section" class="content-section">
+            <h2>Quản lý Phòng</h2>
+            <table id="roomsTable">
+                <thead>
+                    <tr>
+                        <th>Tên phòng</th>
+                        <th>Hành động</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+            <div class="add-form">
+                <input type="text" id="newRoomInput" placeholder="Nhập tên phòng mới...">
+                <button id="addRoomBtn">Thêm phòng</button>
+            </div>
+        </section>
+        <section id="messages-section" class="content-section">
+            <h2>Trình xem Lịch sử Chat</h2>
+
+            <div style="margin-bottom: 20px;">
+                <button id="tab-room-chat" style="padding: 10px; border: 1px solid #ccc; background: #eee;">Chat
+                    Phòng</button>
+                <button id="tab-private-chat" style="padding: 10px; border: 1px solid #ccc;">Chat Riêng</button>
+            </div>
+
+            <div id="room-chat-controls">
+                <label for="room-select">Chọn phòng:</label>
+                <select id="room-select" style="padding: 8px; min-width: 200px;"></select>
+                <button id="view-room-history-btn"
+                    style="padding: 8px 15px; background: #007bff; color: white; border: none; cursor: pointer;">Xem</button>
+            </div>
+
+            <div id="private-chat-controls" style="display: none;">
+                <input type="text" id="user1-input" placeholder="Nhập username người thứ nhất..." style="padding: 8px;">
+                <input type="text" id="user2-input" placeholder="Nhập username người thứ hai..." style="padding: 8px;">
+                <button id="view-private-history-btn"
+                    style="padding: 8px 15px; background: #007bff; color: white; border: none; cursor: pointer;">Xem</button>
+            </div>
+
+            <hr style="margin: 20px 0;">
+
+            <h3>Lịch sử tin nhắn:</h3>
+            <div id="message-display-area"
+                style="height: 500px; overflow-y: auto; background: #fdfdfd; border: 1px solid #eee; padding: 15px; border-radius: 8px;">
+                <p style="color: #777;">Vui lòng chọn một cuộc trò chuyện để xem lịch sử.</p>
+            </div>
+        </section>
+        <section id="backup-section" class="content-section">
+            <h2>Sao lưu & Khôi phục Dữ liệu</h2>
+            <p style="margin-bottom: 20px; color: #555;">Tự động sao lưu được cấu hình chạy mỗi 6 giờ. Bạn cũng có thể
+                tạo một bản sao lưu thủ công ngay bây giờ.</p>
+
+            <button id="createBackupBtn"
+                style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 30px;">Tạo
+                bản sao lưu ngay</button>
+
+            <h3>Danh sách các bản sao lưu</h3>
+            <table id="backupsTable">
+                <thead>
+                    <tr>
+                        <th>Tên File</th>
+                        <th>Ngày tạo</th>
+                        <th>Kích thước</th>
+                        <th>Hành động</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </section>
+    </main>
+    <div id="editRoomModal" class="modal-overlay">
+        <div class="modal-box">
+            <h2>Sửa tên phòng</h2>
+            <input type="text" id="editRoomNameInput"
+                style="width: 100%; padding: 10px; margin-top: 15px; box-sizing: border-box;">
+            <div class="modal-actions">
+                <button id="cancelEditBtn" style="background: #7f8c8d; color: white;">Hủy</button>
+                <button id="saveEditBtn" style="background: #007bff; color: white;">Lưu thay đổi</button>
+            </div>
+        </div>
+    </div>
+    <!-- Modal cho việc SỬA người dùng -->
+    <div id="editUserModal" class="modal-overlay">
+        <div class="modal-box">
+            <h2>Sửa thông tin người dùng</h2>
+            <div style="margin-top: 15px;">
+                <label for="editUsernameInput">Tên người dùng:</label>
+                <input type="text" id="editUsernameInput"
+                    style="width: 100%; padding: 10px; box-sizing: border-box; margin-top: 5px;">
+            </div>
+            <div style="margin-top: 15px;">
+                <label for="editPasswordInput">Mật khẩu mới (để trống nếu không đổi):</label>
+                <input type="password" id="editPasswordInput"
+                    style="width: 100%; padding: 10px; box-sizing: border-box; margin-top: 5px;">
+            </div>
+            <div class="modal-actions">
+                <button id="cancelEditUserBtn" style="background: #7f8c8d; color: white;">Hủy</button>
+                <button id="saveEditUserBtn" style="background: #007bff; color: white;">Lưu thay đổi</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal cho việc THÊM người dùng -->
+    <div id="addUserModal" class="modal-overlay">
+        <div class="modal-box">
+            <h2>Thêm người dùng mới</h2>
+            <div style="margin-top: 15px;">
+                <label for="addUsernameInput">Tên người dùng:</label>
+                <input type="text" id="addUsernameInput"
+                    style="width: 100%; padding: 10px; box-sizing: border-box; margin-top: 5px;">
+            </div>
+            <div style="margin-top: 15px;">
+                <label for="addPasswordInput">Mật khẩu:</label>
+                <input type="password" id="addPasswordInput"
+                    style="width: 100%; padding: 10px; box-sizing: border-box; margin-top: 5px;">
+            </div>
+            <div class="modal-actions">
+                <button id="cancelAddUserBtn" style="background: #7f8c8d; color: white;">Hủy</button>
+                <button id="saveAddUserBtn" style="background: #2ecc71; color: white;">Tạo người dùng</button>
+            </div>
+        </div>
+    </div>
+    <div id="muteUserModal" class="modal-overlay">
+        <div class="modal-box">
+            <h2 id="muteModalTitle">Tắt tiếng người dùng</h2>
+            <div style="margin-top: 15px;">
+                <label for="muteDurationInput">Thời gian tắt tiếng (phút):</label>
+                <input type="number" id="muteDurationInput" min="1" value="60"
+                    style="width: 100%; padding: 10px; box-sizing: border-box; margin-top: 5px;">
+            </div>
+            <div class="modal-actions">
+                <button id="cancelMuteUserBtn" style="background: #7f8c8d; color: white;">Hủy</button>
+                <button id="saveMuteUserBtn" style="background: #e67e22; color: white;">Áp dụng</button>
+            </div>
+        </div>
+    </div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/js/admin.js"></script>
+</body>
+
+</html>
