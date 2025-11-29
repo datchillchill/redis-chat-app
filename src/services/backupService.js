@@ -61,24 +61,56 @@ async function restoreBackup(filename) {
     const redisDir = redisDirResult[1];
     const redisDumpFile = path.join(redisDir, 'dump.rdb');
 
+    console.log('Đang tắt Redis server...');
     // Shutdown Redis without saving current state
     try {
         await redis.shutdown('NOSAVE');
     } catch (err) {
-        // Redis connection will be closed after shutdown, this error is expected
-        console.log('Redis đã được tắt để chuẩn bị khôi phục.');
+        // Redis connection will be closed, or if it's already closed, that's fine.
+        console.log('Lệnh tắt Redis đã được gửi.');
     }
 
-    // Wait a bit for Redis to fully shutdown
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Wait and verify Redis is actually down
+    console.log('Đang đợi Redis tắt hẳn...');
+    let retries = 5;
+    while (retries > 0) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        try {
+            // Try to ping. If it succeeds, Redis is still up.
+            // We need a NEW connection because the old one might be in a weird state or auto-reconnecting.
+            // But 'redis' object handles reconnection. If we can ping, it's up.
+            // If we can't ping (connection refused), it's down.
+            await redis.ping();
+            console.log('Redis vẫn đang chạy, đợi thêm...');
+            retries--;
+        } catch (err) {
+            if (err.message.includes('ECONNREFUSED') || err.message.includes('Closed')) {
+                console.log('Đã xác nhận Redis đã tắt.');
+                break;
+            }
+            console.log('Lỗi khi kiểm tra trạng thái Redis (có thể đã tắt):', err.message);
+            break; // Assume down if other errors
+        }
+    }
 
-    // Copy backup file to Redis directory
-    fs.copyFileSync(backupFilePath, redisDumpFile);
+    if (retries === 0) {
+        throw new Error('Không thể tắt Redis server. Vui lòng tắt thủ công và thử lại.');
+    }
 
-    console.log(`Đã copy file backup vào ${redisDumpFile}`);
-    console.log('VUI LÒNG KHỞI ĐỘNG LẠI REDIS SERVER để hoàn tất quá trình khôi phục!');
+    // Safety delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
-    // Note: Caller needs to handle process exit or restart
+    try {
+        if (fs.existsSync(redisDumpFile)) {
+            fs.unlinkSync(redisDumpFile); // Delete old dump to prevent issues
+        }
+        fs.copyFileSync(backupFilePath, redisDumpFile);
+        console.log(`Đã khôi phục file backup vào ${redisDumpFile}`);
+        console.log('VUI LÒNG KHỞI ĐỘNG LẠI REDIS SERVER NGAY BÂY GIỜ!');
+    } catch (err) {
+        console.error('Lỗi khi copy file backup:', err);
+        throw new Error('Lỗi khi ghi đè file database. Hãy kiểm tra quyền truy cập.');
+    }
 }
 
 function scheduleAutoBackup() {

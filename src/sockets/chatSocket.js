@@ -307,6 +307,47 @@ function initializeChat(io) {
                     } else {
                         pubClient.publish(`room:${chatId}:updates`, updatePayload);
                     }
+
+                    // Check if this message is pinned, if so update it
+                    const currentPinned = await redis.get(`pinned_message:${chatId}`);
+                    if (currentPinned) {
+                        const pinnedObj = JSON.parse(currentPinned);
+                        if (pinnedObj.messageId === messageId) {
+                            await redis.set(`pinned_message:${chatId}`, JSON.stringify(message));
+                            if (chatId.startsWith('private:')) {
+                                const parts = chatId.split(':');
+                                const u1 = parts[1];
+                                const u2 = parts[2];
+                                io.to(u1).emit('message_pinned', { chatId, pinnedMessage: message });
+                                io.to(u2).emit('message_pinned', { chatId, pinnedMessage: message });
+                            } else {
+                                io.to(chatId).emit('message_pinned', { chatId, pinnedMessage: message });
+                            }
+                        }
+                    }
+
+                    // Sync replies (Update preview text for messages replying to this one)
+                    const replyIds = await messageRepo.getReplies(messageId);
+                    if (replyIds && replyIds.length > 0) {
+                        for (const replyId of replyIds) {
+                            const replyMsg = await messageRepo.getMessage(chatId, replyId);
+                            if (replyMsg && replyMsg.replyTo) {
+                                replyMsg.replyTo.text = getMessageContentPreview(message).substring(0, 75) + (message.text.length > 75 ? '...' : '');
+                                await messageRepo.updateMessage(chatId, replyId, replyMsg);
+
+                                const replyUpdatePayload = JSON.stringify({ ...replyMsg, type: 'edit' });
+                                if (chatId.startsWith('private:')) {
+                                    const parts = chatId.split(':');
+                                    const receiverId = parts[1] === userId ? parts[2] : parts[1];
+                                    io.to(receiverId).emit('message edited', replyMsg);
+                                    socket.emit('message edited', replyMsg);
+                                } else {
+                                    pubClient.publish(`room:${chatId}:updates`, replyUpdatePayload);
+                                }
+                            }
+                        }
+                    }
+
                 } catch (error) {
                     console.error('Lỗi sửa tin nhắn:', error);
                 }
@@ -322,6 +363,9 @@ function initializeChat(io) {
                     const messageOwnerId = message.userId || message.senderId;
                     if (messageOwnerId !== userId) return socket.emit('error', 'Bạn chỉ có thể xóa tin nhắn của mình.');
 
+                    // Get replies BEFORE deleting the message (because deleteMessage might remove the replies_to key)
+                    const replyIds = await messageRepo.getReplies(messageId);
+
                     await messageRepo.deleteMessage(chatId, messageId);
 
                     const deletePayload = JSON.stringify({ messageId, chatId, type: 'delete' });
@@ -332,6 +376,27 @@ function initializeChat(io) {
                         socket.emit('message deleted', { messageId, chatId });
                     } else {
                         pubClient.publish(`room:${chatId}:updates`, deletePayload);
+                    }
+
+                    // Sync replies (Update preview text to "Tin nhắn đã bị xóa")
+                    if (replyIds && replyIds.length > 0) {
+                        for (const replyId of replyIds) {
+                            const replyMsg = await messageRepo.getMessage(chatId, replyId);
+                            if (replyMsg && replyMsg.replyTo) {
+                                replyMsg.replyTo.text = 'Tin nhắn đã bị xóa';
+                                await messageRepo.updateMessage(chatId, replyId, replyMsg);
+
+                                const replyUpdatePayload = JSON.stringify({ ...replyMsg, type: 'edit' });
+                                if (chatId.startsWith('private:')) {
+                                    const parts = chatId.split(':');
+                                    const receiverId = parts[1] === userId ? parts[2] : parts[1];
+                                    io.to(receiverId).emit('message edited', replyMsg);
+                                    socket.emit('message edited', replyMsg);
+                                } else {
+                                    pubClient.publish(`room:${chatId}:updates`, replyUpdatePayload);
+                                }
+                            }
+                        }
                     }
                 } catch (error) {
                     console.error('Lỗi xóa tin nhắn:', error);
@@ -347,13 +412,20 @@ function initializeChat(io) {
                     if (!message) return;
 
                     if (!message.reactions) message.reactions = {};
-                    if (!message.reactions[emoji]) message.reactions[emoji] = [];
 
-                    if (!message.reactions[emoji].includes(username)) {
+                    // Check if user already reacted with THIS emoji
+                    const alreadyReactedWithTarget = message.reactions[emoji] && message.reactions[emoji].includes(username);
+
+                    // Remove user from ALL reactions for this message (enforce single reaction)
+                    for (const key in message.reactions) {
+                        message.reactions[key] = message.reactions[key].filter(u => u !== username);
+                        if (message.reactions[key].length === 0) delete message.reactions[key];
+                    }
+
+                    // If they hadn't reacted with this specific emoji before, add it now (toggle logic)
+                    if (!alreadyReactedWithTarget) {
+                        if (!message.reactions[emoji]) message.reactions[emoji] = [];
                         message.reactions[emoji].push(username);
-                    } else {
-                        message.reactions[emoji] = message.reactions[emoji].filter(u => u !== username);
-                        if (message.reactions[emoji].length === 0) delete message.reactions[emoji];
                     }
 
                     await messageRepo.updateMessage(chatId, messageId, message);
@@ -412,6 +484,7 @@ function initializeChat(io) {
                     };
 
                     await messageRepo.saveMessage(chatId, messageId, messageObject, timestamp);
+                    await redis.incr('stats:totalMessages');
                     await userRepo.incrementMessageCount(userId);
                     io.to('admins').emit('admin_users_updated');
 

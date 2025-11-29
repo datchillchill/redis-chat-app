@@ -341,7 +341,7 @@ exports.restoreBackup = async (req, res) => {
             console.log('Khôi phục hoàn tất. Đang tắt Node.js server...');
             console.log('TIẾP THEO: Khởi động lại Redis server, sau đó khởi động lại ứng dụng này.');
             process.exit(0);
-        }, 3000);
+        }, 1000);
 
     } catch (error) {
         console.error('Lỗi khôi phục:', error);
