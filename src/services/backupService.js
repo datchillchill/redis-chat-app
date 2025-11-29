@@ -57,59 +57,104 @@ async function restoreBackup(filename) {
         throw new Error('File sao lưu không tồn tại.');
     }
 
-    const redisDirResult = await redis.config('GET', 'dir');
-    const redisDir = redisDirResult[1];
-    const redisDumpFile = path.join(redisDir, 'dump.rdb');
+    let redisDir;
+    let redisDumpFile;
 
-    console.log('Đang tắt Redis server...');
-    // Shutdown Redis without saving current state
+    // Try to get Redis directory from running instance
     try {
-        await redis.shutdown('NOSAVE');
+        const redisDirResult = await redis.config('GET', 'dir');
+        redisDir = redisDirResult[1];
+        redisDumpFile = path.join(redisDir, 'dump.rdb');
+        console.log(`Đã xác định thư mục Redis: ${redisDir}`);
     } catch (err) {
-        // Redis connection will be closed, or if it's already closed, that's fine.
-        console.log('Lệnh tắt Redis đã được gửi.');
-    }
+        // If Redis is not running, use default path
+        console.log('Redis không chạy, sử dụng đường dẫn mặc định...');
 
-    // Wait and verify Redis is actually down
-    console.log('Đang đợi Redis tắt hẳn...');
-    let retries = 5;
-    while (retries > 0) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        try {
-            // Try to ping. If it succeeds, Redis is still up.
-            // We need a NEW connection because the old one might be in a weird state or auto-reconnecting.
-            // But 'redis' object handles reconnection. If we can ping, it's up.
-            // If we can't ping (connection refused), it's down.
-            await redis.ping();
-            console.log('Redis vẫn đang chạy, đợi thêm...');
-            retries--;
-        } catch (err) {
-            if (err.message.includes('ECONNREFUSED') || err.message.includes('Closed')) {
-                console.log('Đã xác nhận Redis đã tắt.');
+        // Common Redis paths on Windows
+        const possiblePaths = [
+            'D:\\hufi\\hk7_1\\nosql\\CNTT\\Redis',
+            'C:\\Program Files\\Redis',
+            process.env.REDIS_DIR || ''
+        ];
+
+        for (const possiblePath of possiblePaths) {
+            if (possiblePath && fs.existsSync(possiblePath)) {
+                redisDir = possiblePath;
+                redisDumpFile = path.join(redisDir, 'dump.rdb');
+                console.log(`Tìm thấy thư mục Redis tại: ${redisDir}`);
                 break;
             }
-            console.log('Lỗi khi kiểm tra trạng thái Redis (có thể đã tắt):', err.message);
-            break; // Assume down if other errors
+        }
+
+        if (!redisDir) {
+            throw new Error('Không tìm thấy thư mục Redis. Vui lòng đảm bảo Redis đã được cài đặt.');
         }
     }
 
-    if (retries === 0) {
-        throw new Error('Không thể tắt Redis server. Vui lòng tắt thủ công và thử lại.');
+    console.log('\n=== BẮT ĐẦU QUÁ TRÌNH KHÔI PHỤC ===\n');
+
+    // Try to shutdown Redis if it's running
+    try {
+        console.log('Bước 1: Đang tắt Redis server...');
+        await redis.shutdown('NOSAVE');
+        console.log('Lệnh tắt Redis đã được gửi.');
+
+        // Wait for Redis to shut down
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // Verify Redis is down
+        let isDown = false;
+        for (let i = 0; i < 3; i++) {
+            try {
+                await redis.ping();
+                console.log('Redis vẫn đang chạy, đợi thêm...');
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            } catch (err) {
+                if (err.message.includes('ECONNREFUSED') || err.message.includes('Connection is closed')) {
+                    console.log('Redis đã tắt thành công.');
+                    isDown = true;
+                    break;
+                }
+            }
+        }
+
+        if (!isDown) {
+            console.log('CẢNH BÁO: Không thể xác nhận Redis đã tắt.');
+        }
+    } catch (err) {
+        console.log('Redis có thể đã tắt hoặc không chạy:', err.message);
     }
 
-    // Safety delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    console.log('\nBước 2: Đang sao chép file backup...');
 
     try {
+        // Backup old dump.rdb if exists
         if (fs.existsSync(redisDumpFile)) {
-            fs.unlinkSync(redisDumpFile); // Delete old dump to prevent issues
+            const oldBackup = redisDumpFile + '.old';
+            fs.copyFileSync(redisDumpFile, oldBackup);
+            console.log(`Đã sao lưu file cũ thành: ${oldBackup}`);
+            fs.unlinkSync(redisDumpFile);
         }
+
+        // Copy backup file to Redis directory
         fs.copyFileSync(backupFilePath, redisDumpFile);
-        console.log(`Đã khôi phục file backup vào ${redisDumpFile}`);
-        console.log('VUI LÒNG KHỞI ĐỘNG LẠI REDIS SERVER NGAY BÂY GIỜ!');
+        console.log(`Đã khôi phục file backup vào: ${redisDumpFile}`);
+
+        console.log('\n=== KHÔI PHỤC HOÀN TẤT ===\n');
+        console.log('HƯỚNG DẪN TIẾP THEO:');
+        console.log('1. Mở terminal mới');
+        console.log('2. Chạy lệnh: redis-server');
+        console.log('3. Đợi Redis khởi động xong');
+        console.log('4. Quay lại đây và chạy: npm run dev');
+        console.log('\nServer sẽ tự động tắt sau 3 giây...\n');
+
     } catch (err) {
-        console.error('Lỗi khi copy file backup:', err);
-        throw new Error('Lỗi khi ghi đè file database. Hãy kiểm tra quyền truy cập.');
+        console.error('\nLỖI KHI KHÔI PHỤC:', err.message);
+        console.error('\nVui lòng thử các bước sau:');
+        console.error('1. Đảm bảo Redis đã tắt hoàn toàn');
+        console.error('2. Kiểm tra quyền truy cập thư mục Redis');
+        console.error(`3. Thư mục Redis: ${redisDir}`);
+        throw new Error('Không thể khôi phục dữ liệu. Xem log phía trên để biết chi tiết.');
     }
 }
 
